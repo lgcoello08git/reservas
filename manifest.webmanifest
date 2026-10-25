@@ -1,0 +1,30 @@
+{
+  "name": "Reservas Nuncio Viejo",
+  "short_name": "Reservas",
+  "description": "Reservas de Booking, Airbnb y Vrbo de los apartamentos, en un solo sitio.",
+  "lang": "es",
+  "start_url": "./",
+  "scope": "./",
+  "display": "standalone",
+  "orientation": "portrait",
+  "background_color": "#F5F1EB",
+  "theme_color": "#8C3B1C",
+  "icons": [
+    {
+      "src": "icon-192.png",
+      "sizes": "192x192",
+      "type": "image/png"
+    },
+    {
+      "src": "icon-512.png",
+      "sizes": "512x512",
+      "type": "image/png"
+    },
+    {
+      "src": "icon-maskable-512.png",
+      "sizes": "512x512",
+      "type": "image/png",
+      "purpose": "maskable"
+    }
+  ]
+}

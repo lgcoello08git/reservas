@@ -1,0 +1,557 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<meta name="theme-color" content="#8C3B1C">
+<meta name="robots" content="noindex, nofollow">
+<meta name="referrer" content="no-referrer">
+<title>Reservas Nuncio Viejo</title>
+<link rel="manifest" href="manifest.webmanifest">
+<link rel="icon" href="icon-192.png" type="image/png">
+<link rel="apple-touch-icon" href="apple-touch-icon.png">
+<meta name="apple-mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-title" content="Reservas">
+<style>
+
+:root{
+  --bg:#F5F1EB; --card:#FFFFFF; --ink:#1F1A16; --muted:#6E655C; --line:#E6DFD6;
+  --accent:#8C3B1C; --accent-ink:#FFFFFF; --accent-soft:#F6E7DE;
+  --ok:#1A7F4B; --warn:#92400E; --warn-bg:#FEF3C7; --bad:#B42318; --bad-bg:#FEE4E2;
+  --shadow:0 1px 2px rgba(31,26,22,.06),0 4px 14px rgba(31,26,22,.06);
+  --weekend:#FBF8F4; --today:#8C3B1C; --pill-ink:#FFFFFF;
+}
+@media (prefers-color-scheme: dark){
+  :root{
+    --bg:#141210; --card:#1E1B18; --ink:#F2EDE7; --muted:#A99F94; --line:#332E29;
+    --accent:#E58A5F; --accent-ink:#1B0F08; --accent-soft:#3A2419;
+    --ok:#4ADE80; --warn:#FBBF24; --warn-bg:#33270D; --bad:#F87171; --bad-bg:#3A1714;
+    --shadow:none; --weekend:#191714; --today:#E58A5F; --pill-ink:#0E0C0A;
+  }
+}
+.p-Booking{--pc:#003B95;--pc-soft:#E7EEF9}
+.p-Airbnb{--pc:#E31C5F;--pc-soft:#FDE9F0}
+.p-Vrbo{--pc:#6D3FC0;--pc-soft:#F0EAFA}
+.p-Directa{--pc:#1A7F4B;--pc-soft:#E5F4EC}
+.p-Bloqueo{--pc:#6B7280;--pc-soft:#EEF0F2}
+.p-Otra{--pc:#8A6D3B;--pc-soft:#F5EEE2}
+@media (prefers-color-scheme: dark){
+  .p-Booking{--pc:#6E9BF0;--pc-soft:#17223A}
+  .p-Airbnb{--pc:#FF6B8E;--pc-soft:#3A1622}
+  .p-Vrbo{--pc:#A98AF2;--pc-soft:#261C3B}
+  .p-Directa{--pc:#4CC98A;--pc-soft:#132B1F}
+  .p-Bloqueo{--pc:#A1A7B3;--pc-soft:#24262B}
+  .p-Otra{--pc:#D3B07A;--pc-soft:#2E261A}
+}
+*{box-sizing:border-box}
+[hidden]{display:none !important}
+html,body{margin:0;background:var(--bg);color:var(--ink);font:17px/1.4 system-ui,-apple-system,"Segoe UI",Roboto,"Helvetica Neue",Arial,sans-serif;-webkit-tap-highlight-color:transparent}
+body.bloq{overflow:hidden}
+button{font:inherit;color:inherit}
+a{color:var(--accent)}
+.app{max-width:640px;margin:0 auto;padding:0 16px calc(110px + env(safe-area-inset-bottom))}
+
+/* Cabecera */
+.top{position:sticky;top:0;z-index:5;background:var(--bg);padding:14px 0 10px;display:flex;align-items:center;gap:12px}
+.top h1{margin:0;font-size:24px;letter-spacing:-.01em}
+.top .sub{margin:2px 0 0;color:var(--muted);font-size:14px}
+.top .tit{flex:1;min-width:0}
+.icon-btn{width:48px;height:48px;border-radius:50%;border:1px solid var(--line);background:var(--card);display:grid;place-items:center;cursor:pointer;flex:none}
+.icon-btn svg{width:24px;height:24px;stroke:var(--ink)}
+.girando svg{animation:gira 1s linear infinite}
+@keyframes gira{to{transform:rotate(360deg)}}
+
+/* Avisos */
+.aviso{border-radius:14px;padding:12px 14px;margin:0 0 10px;font-size:15px;line-height:1.4;background:var(--warn-bg);color:var(--ink);border-left:5px solid var(--warn)}
+.aviso.mal{background:var(--bad-bg);border-left-color:var(--bad)}
+.aviso b{display:block;margin-bottom:2px}
+
+/* Pestañas y filtros */
+.tabs{display:grid;grid-template-columns:1fr 1fr;background:var(--card);border:1px solid var(--line);border-radius:14px;padding:4px;margin:4px 0 12px}
+.tabs button{border:0;background:transparent;border-radius:10px;padding:11px 8px;font-weight:600;cursor:pointer;color:var(--muted)}
+.tabs button.on{background:var(--accent);color:var(--accent-ink)}
+.chips{display:flex;gap:8px;overflow-x:auto;padding:0 0 12px;scrollbar-width:none}
+.chips::-webkit-scrollbar{display:none}
+.chip{flex:none;border:1px solid var(--line);background:var(--card);border-radius:999px;padding:9px 14px;font-size:15px;cursor:pointer;white-space:nowrap}
+.chip.on{background:var(--ink);color:var(--bg);border-color:var(--ink)}
+
+/* Lista */
+.grupo{margin:18px 0 8px;font-size:13px;font-weight:700;letter-spacing:.06em;text-transform:uppercase;color:var(--muted)}
+.card{display:block;width:100%;text-align:left;background:var(--card);border:1px solid var(--line);border-left:6px solid var(--pc);border-radius:16px;padding:12px 14px;margin:0 0 10px;box-shadow:var(--shadow);cursor:pointer}
+.card.choque{outline:2px solid var(--warn);outline-offset:-1px}
+.card-top{display:flex;align-items:center;gap:8px;flex-wrap:wrap}
+.pill{display:inline-block;background:var(--pc);color:var(--pill-ink);font-size:13px;font-weight:700;padding:3px 9px;border-radius:999px;letter-spacing:.01em}
+.apt{font-weight:700;font-size:16px}
+.tag{margin-left:auto;font-size:13px;font-weight:700;color:var(--accent);background:var(--accent-soft);padding:3px 9px;border-radius:999px}
+.tag.nueva{color:var(--ok);background:transparent;border:1px solid currentColor}
+.fechas{font-size:19px;font-weight:650;margin:8px 0 2px}
+.fechas .n{font-weight:400;color:var(--muted);font-size:16px}
+.quien{font-size:15px;color:var(--ink)}
+.quien.vacio{color:var(--muted)}
+.nota{font-size:14px;color:var(--muted);margin-top:4px;white-space:pre-line;display:-webkit-box;-webkit-line-clamp:2;-webkit-box-orient:vertical;overflow:hidden}
+.alerta-txt{font-size:14px;color:var(--warn);font-weight:600;margin-top:4px}
+.vacio-lista{text-align:center;color:var(--muted);padding:48px 12px}
+.vacio-lista b{display:block;color:var(--ink);font-size:18px;margin-bottom:4px}
+
+/* Calendario */
+.mes{display:flex;align-items:center;justify-content:space-between;margin:2px 0 8px}
+.mes h2{margin:0;font-size:20px;text-transform:capitalize}
+.mes .icon-btn{width:44px;height:44px}
+.leyenda{display:flex;flex-wrap:wrap;gap:6px 12px;font-size:13px;color:var(--muted);margin:0 0 10px}
+.leyenda span{display:inline-flex;align-items:center;gap:5px}
+.leyenda i{width:12px;height:12px;border-radius:3px;background:var(--pc);display:inline-block}
+.carriles{font-size:13px;color:var(--muted);margin:0 0 8px}
+.grid{display:grid;grid-template-columns:repeat(7,1fr);background:var(--card);border:1px solid var(--line);border-radius:16px;overflow:hidden}
+.dsem{font-size:12px;font-weight:700;color:var(--muted);text-align:center;padding:8px 0;border-bottom:1px solid var(--line)}
+.dia{border:0;border-right:1px solid var(--line);border-bottom:1px solid var(--line);background:transparent;min-height:62px;padding:5px 0 6px;display:flex;flex-direction:column;gap:4px;cursor:pointer;text-align:left}
+.dia:nth-child(7n){border-right:0}
+.dia.finde{background:var(--weekend)}
+.dia.fuera{opacity:.38}
+.dia .num{font-size:14px;font-weight:600;padding:0 6px;line-height:22px;height:22px;display:inline-block;align-self:flex-start;margin-left:3px;border-radius:999px;min-width:22px;text-align:center}
+.dia.hoy .num{background:var(--today);color:var(--accent-ink)}
+.dia.sel{box-shadow:inset 0 0 0 2px var(--ink)}
+.carril{height:10px;position:relative}
+.barra{position:absolute;inset:0 -1px 0 0;background:var(--pc)}
+.barra.ini{left:5px;border-radius:5px 0 0 5px}
+.barra.fin{right:5px;border-radius:0 5px 5px 0}
+.barra.ini.fin{border-radius:5px}
+.detalle{background:var(--card);border:1px solid var(--line);border-radius:16px;padding:12px 14px;margin-top:12px}
+.detalle h3{margin:0 0 8px;font-size:17px}
+.dfila{padding:10px 0;border-top:1px solid var(--line)}
+.dfila:first-of-type{border-top:0}
+.dapt{font-size:13px;font-weight:700;color:var(--muted);text-transform:uppercase;letter-spacing:.04em;margin-bottom:4px}
+.libre{color:var(--ok);font-weight:600}
+.mini{display:flex;align-items:center;gap:8px;width:100%;text-align:left;background:var(--pc-soft);border:0;border-radius:12px;padding:9px 10px;margin:4px 0 0;cursor:pointer}
+.mini .q{flex:1;min-width:0;font-size:15px}
+.mini .q small{display:block;color:var(--muted);font-size:13px}
+
+/* Botón añadir */
+.fab{position:fixed;right:max(16px,calc(50% - 304px));bottom:calc(18px + env(safe-area-inset-bottom));z-index:6;border:0;background:var(--accent);color:var(--accent-ink);font-weight:700;font-size:17px;padding:16px 22px;border-radius:999px;box-shadow:0 6px 18px rgba(140,59,28,.35);cursor:pointer;display:flex;align-items:center;gap:8px}
+.fab span{font-size:24px;line-height:16px}
+
+/* Hoja inferior */
+.velo{position:fixed;inset:0;background:rgba(0,0,0,.42);z-index:20;display:flex;align-items:flex-end;justify-content:center}
+.velo[hidden]{display:none}
+.hoja{background:var(--bg);width:100%;max-width:640px;max-height:92vh;overflow:auto;border-radius:22px 22px 0 0;padding:8px 16px calc(20px + env(safe-area-inset-bottom));animation:sube .18s ease-out}
+@keyframes sube{from{transform:translateY(30px);opacity:.6}}
+.asa{width:44px;height:5px;border-radius:9px;background:var(--line);margin:4px auto 10px}
+.hoja-top{display:flex;align-items:center;gap:8px;margin-bottom:6px}
+.hoja-top .apt{flex:1}
+.hoja h2{margin:0 0 4px;font-size:21px}
+.hint{color:var(--muted);font-size:14px;margin:6px 0}
+label.campo{display:block;margin:12px 0 0;font-size:14px;font-weight:600;color:var(--muted)}
+.campo input,.campo textarea,.campo select{display:block;width:100%;margin-top:5px;font:inherit;font-size:17px;color:var(--ink);background:var(--card);border:1px solid var(--line);border-radius:12px;padding:12px}
+.campo textarea{resize:vertical;min-height:84px}
+.dos{display:grid;grid-template-columns:1fr 1fr;gap:10px}
+.seg{display:flex;gap:6px;margin-top:6px;flex-wrap:wrap}
+.seg button{flex:1 1 40%;border:1px solid var(--line);background:var(--card);border-radius:12px;padding:12px 8px;font-weight:600;cursor:pointer;font-size:15px}
+.seg button.on{background:var(--ink);color:var(--bg);border-color:var(--ink)}
+.acciones{display:flex;gap:10px;margin-top:18px}
+.btn{flex:1;border:1px solid var(--line);background:var(--card);border-radius:14px;padding:15px 12px;font-weight:700;cursor:pointer;text-align:center;text-decoration:none;color:var(--ink);font-size:16px}
+.btn.prim{background:var(--accent);border-color:var(--accent);color:var(--accent-ink)}
+.btn.peligro{color:var(--bad);border-color:var(--bad)}
+.btn[disabled]{opacity:.55}
+.enlaces{display:flex;gap:8px;margin-top:10px;flex-wrap:wrap}
+.enlaces .btn{flex:1 1 30%;padding:11px 8px;font-size:15px}
+.msg{margin-top:12px}
+.noches-txt{font-size:14px;color:var(--muted);margin-top:6px}
+
+.toast{position:fixed;left:50%;bottom:calc(92px + env(safe-area-inset-bottom));transform:translateX(-50%) translateY(20px);opacity:0;pointer-events:none;background:var(--ink);color:var(--bg);padding:12px 16px;border-radius:14px;font-size:15px;max-width:calc(100% - 32px);width:max-content;transition:.2s;z-index:30}
+.toast.ver{opacity:1;transform:translateX(-50%)}
+.cargando{padding:60px 0;text-align:center;color:var(--muted)}
+
+/* PWA */
+.top{padding-top:calc(14px + env(safe-area-inset-top))}
+.instalar{display:flex;align-items:center;gap:12px;background:var(--accent-soft);border-radius:14px;padding:12px 14px;margin:0 0 10px}
+.instalar p{margin:0;flex:1;font-size:15px}
+.instalar .btn{flex:none;padding:10px 14px}
+.offline{font-size:13px;color:var(--warn);font-weight:600}
+.dato{display:flex;gap:10px;padding:10px 0;border-top:1px solid var(--line);font-size:16px}
+.dato:first-of-type{border-top:0}
+.dato span{color:var(--muted);min-width:96px}
+.bienvenida{padding:64px 8px;text-align:center}
+.bienvenida h2{margin:0 0 8px}
+.bienvenida p{color:var(--muted);margin:0 auto;max-width:420px}
+
+.login{max-width:420px;margin:0 auto;padding:40px 0}
+.login h2{font-size:24px;margin:0 0 6px}
+.login p{color:var(--muted);margin:0 0 14px}
+.login .campo input{font-size:20px;letter-spacing:.02em}
+.login .codigo{font-size:28px !important;letter-spacing:.4em;text-align:center}
+.cal-fila{background:var(--card);border:1px solid var(--line);border-left:6px solid var(--pc);border-radius:14px;padding:10px 12px;margin:10px 0}
+.cal-fila .tit{display:flex;gap:8px;align-items:center;font-weight:700;font-size:15px}
+.cal-fila input{display:block;width:100%;margin-top:8px;font:inherit;font-size:14px;color:var(--ink);background:var(--bg);border:1px solid var(--line);border-radius:10px;padding:10px}
+.cal-fila .est{font-size:13px;color:var(--muted);margin-top:6px}
+.cal-fila .est.ok{color:var(--ok)} .cal-fila .est.mal{color:var(--bad)}
+.menu-lista{display:flex;flex-direction:column;gap:10px;margin-top:10px}
+</style>
+</head>
+<body>
+<div class="app">
+  <header class="top" id="cabecera" hidden>
+    <div class="tit"><h1>Reservas</h1><p class="sub" id="sub">Cargando…</p></div>
+    <button class="icon-btn" id="btnSync" aria-label="Comprobar ahora las plataformas" title="Comprobar ahora">
+      <svg viewBox="0 0 24 24" fill="none" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M20 11a8 8 0 0 0-14.9-3.9M4 4v4h4"/><path d="M4 13a8 8 0 0 0 14.9 3.9M20 20v-4h-4"/></svg>
+    </button>
+    <button class="icon-btn" id="btnMenu" aria-label="Menú" title="Menú">
+      <svg viewBox="0 0 24 24" fill="none" stroke-width="2.2" stroke-linecap="round"><path d="M4 7h16M4 12h16M4 17h16"/></svg>
+    </button>
+  </header>
+  <div id="instalar"></div>
+  <div id="avisos"></div>
+  <nav class="tabs" role="tablist" id="pestanas" hidden>
+    <button data-tab="proximas" class="on" role="tab">Próximas</button>
+    <button data-tab="calendario" role="tab">Calendario</button>
+  </nav>
+  <div class="chips" id="chips"></div>
+  <main id="vista"><div class="cargando">Cargando…</div></main>
+</div>
+<div class="velo" id="velo" hidden><div class="hoja" id="hoja" role="dialog" aria-modal="true"></div></div>
+<div class="toast" id="toast"></div>
+
+<script>
+// Motor (Google Apps Script). No es secreto: sin email autorizado y código no devuelve nada.
+const MOTOR = 'https://script.google.com/macros/s/AKfycbwAc8n-dL2pH4oAlnUs1-JIZIphojfV5zoxsXSyJ01BcxWTyr4lTSpMWcV4PN8XoMCnLQ/exec';
+const PLATS = ['Booking', 'Airbnb', 'Vrbo'];
+const DSEM = ['dom', 'lun', 'mar', 'mié', 'jue', 'vie', 'sáb'];
+const DSEM_L = ['domingo', 'lunes', 'martes', 'miércoles', 'jueves', 'viernes', 'sábado'];
+const MES = ['ene', 'feb', 'mar', 'abr', 'may', 'jun', 'jul', 'ago', 'sep', 'oct', 'nov', 'dic'];
+const MES_L = ['enero', 'febrero', 'marzo', 'abril', 'mayo', 'junio', 'julio', 'agosto', 'septiembre', 'octubre', 'noviembre', 'diciembre'];
+
+let D = null, tab = 'proximas', filtro = 'todos', mes = null, diaSel = null, ocupado = false, sinConexion = false;
+const $ = s => document.querySelector(s);
+
+/* ---------- Almacén local (puede fallar en modo privado) ---------- */
+function leer(k) { try { return JSON.parse(localStorage.getItem(k)); } catch (e) { return null; } }
+function guardar(k, v) { try { localStorage.setItem(k, JSON.stringify(v)); } catch (e) { /* nada */ } }
+function borrar(k) { try { localStorage.removeItem(k); } catch (e) { /* nada */ } }
+let SES = leer('nv-sesion');
+
+/* ---------- Motor ---------- */
+async function llamar(cuerpo) {
+  const r = await fetch(MOTOR, { method: 'POST', redirect: 'follow', cache: 'no-store', headers: { 'Content-Type': 'text/plain;charset=utf-8' }, body: JSON.stringify(cuerpo) });
+  if (!r.ok) throw new Error('El servidor respondió ' + r.status);
+  return r.json();
+}
+async function api(accion, extra) {
+  if (!SES) throw new Error('sesion');
+  const j = await llamar(Object.assign({ accion, token: SES.token }, extra || {}));
+  if (j.error === 'sesion') { salirLocal(); throw new Error('sesion'); }
+  if (j.error) throw new Error(j.mensaje || 'Error del servidor');
+  return j;
+}
+
+/* ---------- Utilidades ---------- */
+function sumar(ymd, n) { const p = ymd.split('-').map(Number); return new Date(Date.UTC(p[0], p[1] - 1, p[2] + n)).toISOString().slice(0, 10); }
+function noches(a, b) { const x = a.split('-').map(Number), y = b.split('-').map(Number); return Math.round((Date.UTC(y[0], y[1] - 1, y[2]) - Date.UTC(x[0], x[1] - 1, x[2])) / 864e5); }
+function dow(ymd) { const p = ymd.split('-').map(Number); return new Date(Date.UTC(p[0], p[1] - 1, p[2])).getUTCDay(); }
+function fCorta(ymd) { const p = ymd.split('-').map(Number); return DSEM[dow(ymd)] + ' ' + p[2] + ' ' + MES[p[1] - 1]; }
+function fLarga(ymd) { const p = ymd.split('-').map(Number); return DSEM_L[dow(ymd)] + ' ' + p[2] + ' de ' + MES_L[p[1] - 1]; }
+function nTxt(n) { return n + (n === 1 ? ' noche' : ' noches'); }
+function hoyLocal() { const d = new Date(); return d.getFullYear() + '-' + String(d.getMonth() + 1).padStart(2, '0') + '-' + String(d.getDate()).padStart(2, '0'); }
+function esc(s) { return String(s == null ? '' : s).replace(/[&<>"']/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c])); }
+function clase(r) { if (r.tipo === 'Bloqueo') return 'p-Bloqueo'; return PLATS.indexOf(r.plat) >= 0 ? 'p-' + r.plat : 'p-Otra'; }
+function etiqueta(r) { return r.tipo === 'Bloqueo' ? 'Bloqueado · ' + r.plat : r.plat; }
+function enChoque(id) { return D.solapes.some(p => p[0] === id || p[1] === id); }
+function hace(s) {
+  if (!s) return 'Aún no se ha comprobado';
+  const t = new Date(s.replace(' ', 'T')).getTime();
+  const min = Math.max(0, Math.round((Date.now() - t) / 60000));
+  if (min < 1) return 'Comprobado ahora mismo';
+  if (min < 60) return 'Comprobado hace ' + min + ' min';
+  const h = Math.round(min / 60);
+  return h < 24 ? 'Comprobado hace ' + h + ' h' : 'Comprobado el ' + s.slice(8, 10) + '/' + s.slice(5, 7);
+}
+let toastT = null;
+function toast(m) { const t = $('#toast'); t.textContent = m; t.classList.add('ver'); clearTimeout(toastT); toastT = setTimeout(() => t.classList.remove('ver'), 4200); }
+function msgError(e) { const m = e && e.message ? e.message : String(e || 'Error'); return /failed to fetch|load failed|networkerror/i.test(m) ? 'Sin conexión' : m; }
+function abrirHoja(html) { $('#hoja').innerHTML = '<div class="asa"></div>' + html; $('#velo').hidden = false; document.body.classList.add('bloq'); }
+function cerrarHoja() { $('#velo').hidden = true; document.body.classList.remove('bloq'); }
+
+/* ---------- Entrar con email y código ---------- */
+function pantallaEntrar(email) {
+  $('#cabecera').hidden = true; $('#pestanas').hidden = true;
+  $('#chips').innerHTML = ''; $('#avisos').innerHTML = '';
+  $('#vista').innerHTML = '<div class="login"><h2>Reservas Nuncio Viejo</h2>' +
+    '<p>Escribe tu email. Si tienes acceso, te llegará un código de 6 cifras.</p>' +
+    '<label class="campo">Email<input id="l-email" type="email" inputmode="email" autocomplete="email" value="' + esc(email || '') + '"></label>' +
+    '<div class="msg" id="l-msg"></div>' +
+    '<div class="acciones"><button class="btn prim" id="l-pedir">Enviarme el código</button></div></div>';
+  $('#l-pedir').onclick = pedirCodigo;
+  $('#l-email').onkeydown = e => { if (e.key === 'Enter') pedirCodigo(); };
+}
+async function pedirCodigo() {
+  const email = $('#l-email').value.trim();
+  if (!/^\S+@\S+\.\S+$/.test(email)) { $('#l-msg').innerHTML = '<div class="aviso mal">Escribe un email válido.</div>'; return; }
+  const b = $('#l-pedir'); b.disabled = true; b.textContent = 'Enviando…';
+  try {
+    const j = await llamar({ accion: 'pedirCodigo', email });
+    if (j.error) throw new Error(j.mensaje);
+    pantallaCodigo(email);
+  } catch (e) { $('#l-msg').innerHTML = '<div class="aviso mal">' + esc(msgError(e)) + '</div>'; b.disabled = false; b.textContent = 'Enviarme el código'; }
+}
+function pantallaCodigo(email) {
+  $('#vista').innerHTML = '<div class="login"><h2>Revisa tu correo</h2>' +
+    '<p>Si <b>' + esc(email) + '</b> tiene acceso, le habrá llegado un código de 6 cifras (mira también en correo no deseado).</p>' +
+    '<label class="campo">Código<input id="l-codigo" class="codigo" inputmode="numeric" autocomplete="one-time-code" maxlength="6"></label>' +
+    '<div class="msg" id="l-msg"></div>' +
+    '<div class="acciones"><button class="btn" id="l-volver">Volver</button><button class="btn prim" id="l-entrar">Entrar</button></div></div>';
+  $('#l-codigo').focus();
+  $('#l-volver').onclick = () => pantallaEntrar(email);
+  const entrar = async () => {
+    const codigo = $('#l-codigo').value.replace(/\D/g, '');
+    if (codigo.length !== 6) { $('#l-msg').innerHTML = '<div class="aviso mal">El código tiene 6 cifras.</div>'; return; }
+    const b = $('#l-entrar'); b.disabled = true; b.textContent = 'Entrando…';
+    try {
+      const j = await llamar({ accion: 'entrar', email, codigo });
+      if (j.error) throw new Error(j.mensaje);
+      SES = { token: j.token, email: j.email, admin: !!j.admin };
+      guardar('nv-sesion', SES);
+      iniciar();
+    } catch (e) { $('#l-msg').innerHTML = '<div class="aviso mal">' + esc(msgError(e)) + '</div>'; b.disabled = false; b.textContent = 'Entrar'; }
+  };
+  $('#l-entrar').onclick = entrar;
+  $('#l-codigo').oninput = e => { if (e.target.value.replace(/\D/g, '').length === 6) entrar(); };
+}
+function salirLocal() { const email = SES && SES.email; SES = null; D = null; borrar('nv-sesion'); borrar('nv-datos'); cerrarHoja(); pantallaEntrar(email); }
+
+/* ---------- Carga ---------- */
+async function cargar(silencioso) {
+  try {
+    D = await api('datos');
+    sinConexion = false;
+    guardar('nv-datos', D);
+    render();
+  } catch (e) {
+    if (msgError(e) === 'sesion') return;
+    const copia = leer('nv-datos');
+    if (copia) { D = copia; sinConexion = true; render(); if (!silencioso) toast('Sin conexión: se muestran los últimos datos'); }
+    else if (!silencioso) $('#vista').innerHTML = '<div class="vacio-lista"><b>No se pudieron cargar las reservas</b>' + esc(msgError(e)) + '<p><button class="btn" onclick="cargar()">Reintentar</button></p></div>';
+  }
+}
+async function sincronizar() {
+  if (ocupado || !SES) return;
+  ocupado = true;
+  const b = $('#btnSync'); b.classList.add('girando'); $('#sub').textContent = 'Comprobando Booking, Airbnb y Vrbo…';
+  try { D = await api('sincronizar'); sinConexion = false; guardar('nv-datos', D); render(); toast('Reservas al día'); }
+  catch (e) { if (msgError(e) !== 'sesion') { toast(msgError(e)); if (D) render(); } }
+  finally { ocupado = false; b.classList.remove('girando'); }
+}
+
+/* ---------- Pintar ---------- */
+function render() {
+  if (!D) return;
+  D.hoy = hoyLocal();
+  $('#cabecera').hidden = false; $('#pestanas').hidden = false;
+  $('#sub').innerHTML = esc(hace(D.ultimaSync)) + (sinConexion ? ' · <span class="offline">sin conexión</span>' : '');
+  renderAvisos();
+  document.querySelectorAll('.tabs button').forEach(b => b.classList.toggle('on', b.dataset.tab === tab));
+  const ch = ['todos'].concat(D.apartamentos);
+  if (ch.indexOf(filtro) < 0) filtro = 'todos';
+  $('#chips').innerHTML = ch.map(a => '<button class="chip' + (a === filtro ? ' on' : '') + '" data-filtro="' + esc(a) + '">' + (a === 'todos' ? 'Los dos' : esc(a)) + '</button>').join('');
+  if (tab === 'proximas') renderProximas(); else renderCalendario();
+}
+
+function renderAvisos() {
+  const h = [];
+  const porId = {}; D.reservas.forEach(r => { porId[r.id] = r; });
+  D.solapes.forEach(p => {
+    const a = porId[p[0]], b = porId[p[1]];
+    if (!a || !b) return;
+    h.push('<div class="aviso"><b>⚠️ Posible doble reserva · ' + esc(a.apt) + '</b>' + esc(etiqueta(a)) + ': ' + esc(fCorta(a.entrada)) + ' → ' + esc(fCorta(a.salida)) + '<br>' + esc(etiqueta(b)) + ': ' + esc(fCorta(b.entrada)) + ' → ' + esc(fCorta(b.salida)) + '</div>');
+  });
+  const malas = D.fuentes.filter(f => f.tieneUrl && !f.ok && f.error && !f.provisional);
+  if (malas.length) h.push('<div class="aviso mal"><b>No se puede leer ' + (malas.length === 1 ? 'un calendario' : malas.length + ' calendarios') + '</b>' + malas.map(f => esc(f.plat + ' · ' + f.apt)).join('<br>') + '<br><span style="color:var(--muted)">Sus reservas pueden no estar al día.</span></div>');
+  const faltan = D.fuentes.filter(f => !f.tieneUrl);
+  if (faltan.length && D.admin) h.push('<div class="aviso"><b>Faltan ' + faltan.length + ' calendarios por conectar</b><button class="btn" style="margin-top:8px;width:100%" onclick="abrirCalendarios()">Conectar calendarios</button></div>');
+  $('#avisos').innerHTML = h.join('');
+}
+
+function tarjeta(r) {
+  const hoy = D.hoy, man = sumar(hoy, 1);
+  let tag = '';
+  if (r.entrada === hoy) tag = 'Entra hoy';
+  else if (r.salida === hoy) tag = 'Sale hoy';
+  else if (r.entrada === man) tag = 'Entra mañana';
+  else if (r.salida === man) tag = 'Sale mañana';
+  else if (r.entrada < hoy && r.salida > hoy) tag = 'Sale ' + fCorta(r.salida);
+  else { const n = noches(hoy, r.entrada); if (n <= 30) tag = 'En ' + n + ' días'; }
+  const datos = [];
+  if (r.nombre) datos.push(esc(r.nombre));
+  if (r.tel4) datos.push('📞 …' + esc(r.tel4));
+  return '<button class="card ' + clase(r) + (enChoque(r.id) ? ' choque' : '') + '" data-id="' + esc(r.id) + '">' +
+    '<div class="card-top"><span class="pill">' + esc(etiqueta(r)) + '</span><span class="apt">' + esc(r.apt) + '</span>' +
+    (r.nueva ? '<span class="tag nueva">Nueva</span>' : '') + (tag ? '<span class="tag"' + (r.nueva ? ' style="margin-left:0"' : '') + '>' + esc(tag) + '</span>' : '') + '</div>' +
+    '<div class="fechas">' + esc(fCorta(r.entrada)) + ' → ' + esc(fCorta(r.salida)) + ' <span class="n">· ' + nTxt(noches(r.entrada, r.salida)) + '</span></div>' +
+    (datos.length ? '<div class="quien">' + datos.join(' · ') + '</div>' : '') +
+    (enChoque(r.id) ? '<div class="alerta-txt">⚠️ Se solapa con otra reserva</div>' : '') +
+    '</button>';
+}
+
+function renderProximas() {
+  const hoy = D.hoy, man = sumar(hoy, 1), sem = sumar(hoy, 7);
+  const rs = D.reservas.filter(r => r.salida >= hoy && (filtro === 'todos' || r.apt === filtro))
+    .sort((a, b) => (a.entrada + a.apt).localeCompare(b.entrada + b.apt));
+  const grupos = [
+    ['Hoy', rs.filter(r => r.entrada === hoy || r.salida === hoy)],
+    ['Ahora alojados', rs.filter(r => r.entrada < hoy && r.salida > hoy)],
+    ['Mañana', rs.filter(r => r.entrada === man)],
+    ['Próximos 7 días', rs.filter(r => r.entrada > man && r.entrada <= sem)],
+    ['Más adelante', rs.filter(r => r.entrada > sem)],
+  ];
+  let h = '';
+  grupos.forEach(g => { if (g[1].length) h += '<div class="grupo">' + g[0] + '</div>' + g[1].map(tarjeta).join(''); });
+  $('#vista').innerHTML = h || '<div class="vacio-lista"><b>No hay reservas próximas</b>Cuando entre una en Booking, Airbnb o Vrbo aparecerá aquí.</div>';
+}
+
+function renderCalendario() {
+  if (!mes) mes = D.hoy.slice(0, 7);
+  const p = mes.split('-').map(Number);
+  const primero = mes + '-01';
+  const desfase = (dow(primero) + 6) % 7;
+  const diasMes = new Date(Date.UTC(p[0], p[1], 0)).getUTCDate();
+  const semanas = Math.ceil((desfase + diasMes) / 7);
+  const inicio = sumar(primero, -desfase);
+  const apts = filtro === 'todos' ? D.apartamentos : [filtro];
+  const ocup = {}; apts.forEach(a => { ocup[a] = {}; });
+  D.reservas.forEach(r => { if (!ocup[r.apt]) return; for (let d = r.entrada; d < r.salida; d = sumar(d, 1)) if (!ocup[r.apt][d]) ocup[r.apt][d] = r; });
+  if (!diaSel || diaSel.slice(0, 7) !== mes) diaSel = D.hoy.slice(0, 7) === mes ? D.hoy : primero;
+
+  let h = '<div class="mes"><button class="icon-btn" data-mes="-1" aria-label="Mes anterior"><svg viewBox="0 0 24 24" fill="none" stroke-width="2.2" stroke-linecap="round"><path d="M15 5l-7 7 7 7"/></svg></button>' +
+    '<h2>' + MES_L[p[1] - 1] + ' ' + p[0] + '</h2>' +
+    '<button class="icon-btn" data-mes="1" aria-label="Mes siguiente"><svg viewBox="0 0 24 24" fill="none" stroke-width="2.2" stroke-linecap="round"><path d="M9 5l7 7-7 7"/></svg></button></div>';
+  h += '<div class="leyenda">' + PLATS.map(x => '<span class="p-' + x + '"><i></i>' + x + '</span>').join('') + '<span class="p-Bloqueo"><i></i>Bloqueado</span></div>';
+  if (apts.length > 1) h += '<div class="carriles">Cada día: ' + apts.map((a, i) => (i === 0 ? 'arriba ' : 'abajo ') + '<b>' + esc(a) + '</b>').join(' · ') + '</div>';
+  h += '<div class="grid">' + ['L', 'M', 'X', 'J', 'V', 'S', 'D'].map(x => '<div class="dsem">' + x + '</div>').join('');
+  for (let i = 0; i < semanas * 7; i++) {
+    const d = sumar(inicio, i);
+    const cls = ['dia'];
+    if (d.slice(0, 7) !== mes) cls.push('fuera');
+    if (i % 7 >= 5) cls.push('finde');
+    if (d === D.hoy) cls.push('hoy');
+    if (d === diaSel) cls.push('sel');
+    h += '<button class="' + cls.join(' ') + '" data-dia="' + d + '"><span class="num">' + Number(d.slice(8)) + '</span>';
+    apts.forEach(a => {
+      const r = ocup[a][d];
+      h += '<span class="carril">' + (r ? '<i class="barra ' + clase(r) + (r.entrada === d ? ' ini' : '') + (sumar(d, 1) === r.salida ? ' fin' : '') + '"></i>' : '') + '</span>';
+    });
+    h += '</button>';
+  }
+  h += '</div>';
+
+  const fl = fLarga(diaSel);
+  h += '<div class="detalle"><h3>' + fl.charAt(0).toUpperCase() + fl.slice(1) + '</h3>';
+  apts.forEach(a => {
+    const r = ocup[a][diaSel];
+    const sale = D.reservas.find(x => x.apt === a && x.salida === diaSel);
+    h += '<div class="dfila"><div class="dapt">' + esc(a) + '</div>';
+    if (sale && (!r || r.id !== sale.id)) h += miniTarjeta(sale, 'Sale');
+    if (r) h += miniTarjeta(r, r.entrada === diaSel ? 'Entra' : 'Ocupado');
+    if (!r) h += '<div class="libre" style="margin-top:4px">Libre esta noche</div>';
+    h += '</div>';
+  });
+  h += '</div>';
+  $('#vista').innerHTML = h;
+}
+
+function miniTarjeta(r, txt) {
+  const q = r.tipo === 'Bloqueo' ? 'Fechas cerradas' : (r.nombre || 'Reserva');
+  return '<button class="mini ' + clase(r) + '" data-id="' + esc(r.id) + '"><span class="pill">' + esc(etiqueta(r)) + '</span>' +
+    '<span class="q">' + esc(q) + '<small>' + esc(txt) + ' · ' + esc(fCorta(r.entrada)) + ' → ' + esc(fCorta(r.salida)) + '</small></span></button>';
+}
+
+/* ---------- Detalle de una reserva (solo consulta) ---------- */
+function abrirReserva(id) {
+  const r = D.reservas.find(x => x.id === id);
+  if (!r) return;
+  const n = noches(r.entrada, r.salida);
+  let h = '<div class="hoja-top ' + clase(r) + '"><span class="pill">' + esc(etiqueta(r)) + '</span><span class="apt">' + esc(r.apt) + '</span></div>' +
+    '<h2>' + esc(fCorta(r.entrada)) + ' → ' + esc(fCorta(r.salida)) + '</h2>' +
+    '<div class="detalle" style="margin-top:12px">' +
+    '<div class="dato"><span>Entrada</span><b>' + esc(fLarga(r.entrada)) + '</b></div>' +
+    '<div class="dato"><span>Salida</span><b>' + esc(fLarga(r.salida)) + '</b></div>' +
+    '<div class="dato"><span>Noches</span><b>' + n + '</b></div>' +
+    '<div class="dato"><span>Plataforma</span><b>' + esc(r.plat) + '</b></div>' +
+    (r.nombre ? '<div class="dato"><span>Huésped</span><b>' + esc(r.nombre) + '</b></div>' : '') +
+    (r.tel4 ? '<div class="dato"><span>Teléfono</span><b>acaba en ' + esc(r.tel4) + '</b></div>' : '') +
+    (r.codigo ? '<div class="dato"><span>Código</span><b>' + esc(r.codigo) + '</b></div>' : '') +
+    '</div>';
+  if (enChoque(r.id)) h += '<div class="aviso" style="margin-top:12px"><b>⚠️ Se solapa con otra reserva</b>Revísalo en las plataformas.</div>';
+  if (r.plat === 'Booking') h += '<div class="hint">Booking no comparte el nombre del huésped por calendario: los datos están en la app de Booking.</div>';
+  h += '<div class="acciones">' + (r.enlace ? '<a class="btn" target="_blank" rel="noopener" href="' + esc(r.enlace) + '">Ver en ' + esc(r.plat) + '</a>' : '') + '<button class="btn prim" id="f-cerrar">Cerrar</button></div>';
+  abrirHoja(h);
+  $('#f-cerrar').onclick = cerrarHoja;
+}
+
+/* ---------- Menú ---------- */
+function abrirMenu() {
+  let h = '<h2>Menú</h2><div class="hint">Has entrado como <b>' + esc(SES.email) + '</b></div><div class="menu-lista">';
+  if (SES.admin) h += '<button class="btn" id="m-cal">Calendarios de las plataformas</button>';
+  h += '<button class="btn peligro" id="m-salir">Cerrar sesión en este móvil</button><button class="btn prim" id="m-cerrar">Volver</button></div>';
+  abrirHoja(h);
+  if (SES.admin) $('#m-cal').onclick = abrirCalendarios;
+  $('#m-cerrar').onclick = cerrarHoja;
+  $('#m-salir').onclick = async () => { try { await llamar({ accion: 'salir', token: SES.token }); } catch (e) { /* nada */ } salirLocal(); };
+}
+
+/* ---------- Calendarios (solo administrador) ---------- */
+function abrirCalendarios() {
+  if (!D || !D.admin) return;
+  let h = '<h2>Calendarios</h2><div class="hint">Pega en cada uno el enlace de <b>Exportar calendario</b> de la plataforma. Solo se usan para leer las fechas; no permiten cambiar nada.</div>';
+  D.fuentes.forEach((f, i) => {
+    const est = !f.tieneUrl ? '<div class="est">Sin conectar</div>'
+      : f.ok ? '<div class="est ok">✓ Leído · ' + (f.eventos || 0) + ((f.eventos || 0) === 1 ? ' fecha' : ' fechas') + '</div>'
+      : '<div class="est mal">' + esc(f.error || 'Pendiente de comprobar') + '</div>';
+    h += '<div class="cal-fila p-' + esc(f.plat) + '"><div class="tit"><span class="pill">' + esc(f.plat) + '</span>' + esc(f.apt) + '</div>' +
+      '<input data-i="' + i + '" type="url" inputmode="url" autocomplete="off" spellcheck="false" placeholder="https://… (.ics)" value="' + esc(f.url || '') + '">' + est + '</div>';
+  });
+  h += '<div class="msg" id="f-msg"></div><div class="acciones"><button class="btn" id="c-cerrar">Cerrar</button><button class="btn prim" id="c-guardar">Guardar y comprobar</button></div>';
+  abrirHoja(h);
+  $('#c-cerrar').onclick = cerrarHoja;
+  $('#c-guardar').onclick = async () => {
+    const fuentes = D.fuentes.map((f, i) => ({ apt: f.apt, plat: f.plat, url: document.querySelector('input[data-i="' + i + '"]').value.trim() }));
+    const b = $('#c-guardar'); b.disabled = true; b.textContent = 'Comprobando…';
+    try { D = await api('guardarFuentes', { fuentes }); guardar('nv-datos', D); render(); abrirCalendarios(); toast('Guardado'); }
+    catch (e) { $('#f-msg').innerHTML = '<div class="aviso mal">' + esc(msgError(e)) + '</div>'; b.disabled = false; b.textContent = 'Guardar y comprobar'; }
+  };
+}
+
+/* ---------- Instalar como app ---------- */
+let avisoInstalar = null;
+window.addEventListener('beforeinstallprompt', e => {
+  e.preventDefault();
+  avisoInstalar = e;
+  $('#instalar').innerHTML = '<div class="instalar"><p><b>Instala la app</b> para tenerla en la pantalla de inicio.</p><button class="btn prim" id="btnInstalar">Instalar</button></div>';
+  $('#btnInstalar').onclick = async () => { avisoInstalar.prompt(); await avisoInstalar.userChoice; avisoInstalar = null; $('#instalar').innerHTML = ''; };
+});
+window.addEventListener('appinstalled', () => { $('#instalar').innerHTML = ''; });
+if ('serviceWorker' in navigator) navigator.serviceWorker.register('sw.js').catch(() => {});
+
+/* ---------- Eventos ---------- */
+document.addEventListener('click', e => {
+  const t = e.target;
+  if (t.closest('.hoja') && !t.closest('[data-id]')) return;
+  const tb = t.closest('.tabs button'); if (tb) { tab = tb.dataset.tab; render(); window.scrollTo(0, 0); return; }
+  const ch = t.closest('[data-filtro]'); if (ch) { filtro = ch.dataset.filtro; render(); return; }
+  const mb = t.closest('[data-mes]');
+  if (mb) { const p = mes.split('-').map(Number); const d = new Date(Date.UTC(p[0], p[1] - 1 + Number(mb.dataset.mes), 1)); mes = d.toISOString().slice(0, 7); diaSel = null; render(); return; }
+  const di = t.closest('[data-dia]'); if (di) { diaSel = di.dataset.dia; if (diaSel.slice(0, 7) !== mes) mes = diaSel.slice(0, 7); render(); return; }
+  const re = t.closest('[data-id]'); if (re) abrirReserva(re.dataset.id);
+});
+$('#velo').addEventListener('click', e => { if (e.target.id === 'velo') cerrarHoja(); });
+$('#btnSync').onclick = sincronizar;
+$('#btnMenu').onclick = abrirMenu;
+
+function iniciar() {
+  if (!SES) { pantallaEntrar(''); return; }
+  const copia = leer('nv-datos');
+  if (copia) { D = copia; render(); } else $('#vista').innerHTML = '<div class="cargando">Cargando reservas…</div>';
+  cargar();
+}
+document.addEventListener('visibilitychange', () => { if (!document.hidden && SES && $('#velo').hidden) cargar(true); });
+setInterval(() => { if (!document.hidden && SES && $('#velo').hidden) cargar(true); }, 5 * 60 * 1000);
+setInterval(() => { if (D && SES && $('#velo').hidden) render(); }, 60 * 1000);
+iniciar();
+</script>
+</body>
+</html>
