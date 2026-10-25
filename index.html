@@ -227,6 +227,28 @@ function guardar(k, v) { try { localStorage.setItem(k, JSON.stringify(v)); } cat
 function borrar(k) { try { localStorage.removeItem(k); } catch (e) { /* nada */ } }
 let SES = leer('nv-sesion');
 
+/* Copia de la sesión en IndexedDB: en iPhone (app en pantalla de inicio) localStorage a veces se pierde al cerrar la app. */
+function idb(modo, fn) {
+  return new Promise(ok => {
+    try {
+      const rq = indexedDB.open('nv', 1);
+      rq.onupgradeneeded = () => rq.result.createObjectStore('kv');
+      rq.onerror = () => ok(null);
+      rq.onsuccess = () => {
+        try {
+          const tx = rq.result.transaction('kv', modo), st = tx.objectStore('kv');
+          const r = fn(st);
+          tx.oncomplete = () => ok(r && 'result' in r ? r.result : null);
+          tx.onerror = tx.onabort = () => ok(null);
+        } catch (e) { ok(null); }
+      };
+    } catch (e) { ok(null); }
+  });
+}
+function guardarSesion(s) { guardar('nv-sesion', s); return idb('readwrite', st => st.put(s, 'sesion')); }
+function borrarSesion() { borrar('nv-sesion'); return idb('readwrite', st => st.delete('sesion')); }
+function leerSesionIdb() { return idb('readonly', st => st.get('sesion')); }
+
 /* ---------- Motor ---------- */
 async function llamar(cuerpo) {
   const r = await fetch(MOTOR, { method: 'POST', redirect: 'follow', cache: 'no-store', headers: { 'Content-Type': 'text/plain;charset=utf-8' }, body: JSON.stringify(cuerpo) });
@@ -306,14 +328,14 @@ function pantallaCodigo(email) {
       const j = await llamar({ accion: 'entrar', email, codigo });
       if (j.error) throw new Error(j.mensaje);
       SES = { token: j.token, email: j.email, admin: !!j.admin };
-      guardar('nv-sesion', SES);
+      await guardarSesion(SES);
       iniciar();
     } catch (e) { $('#l-msg').innerHTML = '<div class="aviso mal">' + esc(msgError(e)) + '</div>'; b.disabled = false; b.textContent = 'Entrar'; }
   };
   $('#l-entrar').onclick = entrar;
   $('#l-codigo').oninput = e => { if (e.target.value.replace(/\D/g, '').length === 6) entrar(); };
 }
-function salirLocal() { const email = SES && SES.email; SES = null; D = null; borrar('nv-sesion'); borrar('nv-datos'); cerrarHoja(); pantallaEntrar(email); }
+function salirLocal() { const email = SES && SES.email; SES = null; D = null; borrarSesion(); borrar('nv-datos'); cerrarHoja(); pantallaEntrar(email); }
 
 /* ---------- Carga ---------- */
 async function cargar(silencioso) {
@@ -551,7 +573,12 @@ function iniciar() {
 document.addEventListener('visibilitychange', () => { if (!document.hidden && SES && $('#velo').hidden) cargar(true); });
 setInterval(() => { if (!document.hidden && SES && $('#velo').hidden) cargar(true); }, 5 * 60 * 1000);
 setInterval(() => { if (D && SES && $('#velo').hidden) render(); }, 60 * 1000);
-iniciar();
+(async () => {
+  try { if (navigator.storage && navigator.storage.persist) navigator.storage.persist(); } catch (e) { /* nada */ }
+  if (!SES) { const s = await leerSesionIdb(); if (s && s.token) { SES = s; guardar('nv-sesion', s); } }
+  else guardarSesion(SES);
+  iniciar();
+})();
 </script>
 </body>
 </html>
