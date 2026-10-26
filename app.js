@@ -45,7 +45,7 @@ async function llamar(cuerpo) {
 }
 async function api(accion, extra) {
   if (!SES) throw new Error('sesion');
-  const j = await llamar(Object.assign({ accion, token: SES.token }, extra || {}));
+  const j = await llamar(Object.assign({ accion, token: SES.token, dispositivo: nombreDispositivo() }, extra || {}));
   if (j.error === 'sesion') { salirLocal(); throw new Error('sesion'); }
   if (j.error) throw new Error(j.mensaje || 'Error del servidor');
   return j;
@@ -95,7 +95,7 @@ async function pedirCodigo() {
   if (!/^\S+@\S+\.\S+$/.test(email)) { $('#l-msg').innerHTML = '<div class="aviso mal">Escribe un email válido.</div>'; return; }
   const b = $('#l-pedir'); b.disabled = true; b.textContent = 'Enviando…';
   try {
-    const j = await llamar({ accion: 'pedirCodigo', email });
+    const j = await llamar({ accion: 'pedirCodigo', email, dispositivo: nombreDispositivo() });
     if (j.error) throw new Error(j.mensaje);
     pantallaCodigo(email);
   } catch (e) { $('#l-msg').innerHTML = '<div class="aviso mal">' + esc(msgError(e)) + '</div>'; b.disabled = false; b.textContent = 'Enviarme el código'; }
@@ -123,7 +123,7 @@ function pantallaCodigo(email) {
   $('#l-entrar').onclick = entrar;
   $('#l-codigo').oninput = e => { if (e.target.value.replace(/\D/g, '').length === 6) entrar(); };
 }
-function salirLocal() { const email = SES && SES.email; SES = null; D = null; borrarSesion(); borrar('nv-datos'); quitarBloqueoLocal(); desbloqueada = false; cerrarHoja(); pantallaEntrar(email); }
+function salirLocal() { const email = SES && SES.email; SES = null; D = null; REG = null; borrarSesion(); borrar('nv-datos'); cerrarHoja(); pantallaEntrar(email); }
 
 function nombreDispositivo() {
   const ua = navigator.userAgent || '';
@@ -134,67 +134,14 @@ function nombreDispositivo() {
   return so + ' · ' + nav;
 }
 
-/* ---------- Bloqueo con Face ID / huella (opcional, por móvil) ---------- */
-const BLOQUEO_MIN = 5;   // minutos fuera de la app antes de volver a pedirlo
-let desbloqueada = false, ocultaDesde = 0;
-const b64u = buf => btoa(String.fromCharCode.apply(null, new Uint8Array(buf))).replace(/\+/g, '-').replace(/\//g, '_').replace(/=+$/, '');
-const deB64u = t => Uint8Array.from(atob(t.replace(/-/g, '+').replace(/_/g, '/')), c => c.charCodeAt(0));
-const azar = n => crypto.getRandomValues(new Uint8Array(n));
-function bloqueoId() { const b = leer('nv-bloqueo'); return b && b.id ? b.id : null; }
-function quitarBloqueoLocal() { borrar('nv-bloqueo'); idb('readwrite', st => st.delete('bloqueo')); }
-async function hayBiometria() {
-  try { return !!(window.PublicKeyCredential && await PublicKeyCredential.isUserVerifyingPlatformAuthenticatorAvailable()); } catch (e) { return false; }
-}
-async function activarBloqueo() {
-  const cred = await navigator.credentials.create({ publicKey: {
-    rp: { name: 'Reservas Nuncio Viejo', id: location.hostname },
-    user: { id: azar(16), name: SES.email, displayName: 'Reservas · ' + SES.email },
-    challenge: azar(32),
-    pubKeyCredParams: [{ type: 'public-key', alg: -7 }, { type: 'public-key', alg: -257 }],
-    authenticatorSelection: { authenticatorAttachment: 'platform', userVerification: 'required', residentKey: 'preferred' },
-    timeout: 60000, attestation: 'none',
-  } });
-  const b = { id: b64u(cred.rawId) };
-  guardar('nv-bloqueo', b); await idb('readwrite', st => st.put(b, 'bloqueo'));
-}
-async function comprobarBiometria() {
-  const id = bloqueoId();
-  if (!id) return true;
-  const a = await navigator.credentials.get({ publicKey: {
-    challenge: azar(32), rpId: location.hostname, userVerification: 'required', timeout: 60000,
-    allowCredentials: [{ type: 'public-key', id: deB64u(id) }],
-  } });
-  const datos = new Uint8Array(a.response.authenticatorData);
-  return b64u(a.rawId) === id && (datos[32] & 0x04) === 0x04;   // la huella o la cara se han comprobado de verdad
-}
-function pantallaBloqueo() {
-  $('#cabecera').hidden = true; $('#pestanas').hidden = true; $('#chips').innerHTML = ''; $('#avisos').innerHTML = '';
-  cerrarHoja();
-  $('#vista').innerHTML = '<div class="login" style="text-align:center"><div style="font-size:56px;line-height:1">🔒</div><h2>Reservas bloqueadas</h2>' +
-    '<p>Desbloquea con Face ID o con tu huella.</p><div class="msg" id="b-msg"></div>' +
-    '<div class="acciones"><button class="btn prim" id="b-abrir">Desbloquear</button></div>' +
-    '<p style="margin-top:22px"><button class="btn" id="b-codigo" style="border:0;background:transparent;color:var(--muted);font-weight:600">No puedo · entrar con el código del email</button></p></div>';
-  const abrir = async () => {
-    try {
-      if (await comprobarBiometria()) { desbloqueada = true; iniciar(); }
-      else $('#b-msg').innerHTML = '<div class="aviso mal">No se ha podido comprobar.</div>';
-    } catch (e) { $('#b-msg').innerHTML = '<div class="aviso mal">No se ha podido comprobar. Inténtalo otra vez.</div>'; }
-  };
-  $('#b-abrir').onclick = abrir;
-  $('#b-codigo').onclick = salirLocal;
-}
-document.addEventListener('visibilitychange', () => {
-  if (document.hidden) { ocultaDesde = Date.now(); return; }
-  if (bloqueoId() && desbloqueada && ocultaDesde && Date.now() - ocultaDesde > BLOQUEO_MIN * 60000) { desbloqueada = false; D = null; pantallaBloqueo(); }
-});
+/* Restos del bloqueo con Face ID (retirado): se limpian al abrir. */
+function limpiarBloqueoAntiguo() { borrar('nv-bloqueo'); idb('readwrite', st => st.delete('bloqueo')); }
 
 /* ---------- Carga ---------- */
 async function cargar(silencioso) {
-  if (!activa()) return;
+  if (!SES) return;
   try {
-    const nuevo = await api('datos');
-    if (!activa()) return;
-    D = nuevo;
+    D = await api('datos');
     sinConexion = false;
     guardar('nv-datos', D);
     render();
@@ -362,22 +309,10 @@ function abrirReserva(id) {
 /* ---------- Menú ---------- */
 function abrirMenu() {
   let h = '<h2>Menú</h2><div class="hint">Has entrado como <b>' + esc(SES.email) + '</b></div><div class="menu-lista">';
-  if (SES.admin) h += '<button class="btn" id="m-cal">Calendarios de las plataformas</button><button class="btn" id="m-disp">Dispositivos conectados</button>';
-  h += '<button class="btn" id="m-bloq" hidden></button>';
+  if (SES.admin) h += '<button class="btn" id="m-cal">Calendarios de las plataformas</button><button class="btn" id="m-disp">Dispositivos conectados</button><button class="btn" id="m-reg">Registro de actividad</button>';
   h += '<button class="btn peligro" id="m-salir">Cerrar sesión en este móvil</button><button class="btn prim" id="m-cerrar">Volver</button></div><div class="msg" id="m-msg"></div>';
   abrirHoja(h);
-  if (SES.admin) { $('#m-cal').onclick = abrirCalendarios; $('#m-disp').onclick = abrirDispositivos; }
-  hayBiometria().then(si => {
-    const b = $('#m-bloq'); if (!si || !b) return;
-    b.hidden = false; b.textContent = bloqueoId() ? 'Bloqueo con Face ID / huella: activado · Quitar' : 'Activar bloqueo con Face ID / huella';
-    b.onclick = async () => {
-      try {
-        if (bloqueoId()) { if (!(await comprobarBiometria())) throw new Error('x'); quitarBloqueoLocal(); toast('Bloqueo quitado'); }
-        else { await activarBloqueo(); desbloqueada = true; toast('Bloqueo activado: se pedirá al abrir la app'); }
-        abrirMenu();
-      } catch (e) { $('#m-msg').innerHTML = '<div class="aviso mal">No se ha podido. Inténtalo otra vez.</div>'; }
-    };
-  });
+  if (SES.admin) { $('#m-cal').onclick = abrirCalendarios; $('#m-disp').onclick = abrirDispositivos; $('#m-reg').onclick = () => abrirRegistro(); }
   $('#m-cerrar').onclick = cerrarHoja;
   $('#m-salir').onclick = async () => { try { await llamar({ accion: 'salir', token: SES.token }); } catch (e) { /* nada */ } salirLocal(); };
 }
@@ -408,6 +343,65 @@ async function abrirDispositivos(lista) {
       catch (e) { $('#d-msg').innerHTML = '<div class="aviso mal">' + esc(msgError(e)) + '</div>'; b.disabled = false; b.textContent = 'Expulsar'; }
     };
   });
+}
+
+/* ---------- Registro de actividad (solo administrador) ---------- */
+const TIPOS_REG = {
+  entrada: ['🔑', 'Entró con código'],
+  abre: ['📱', 'Abrió la app'],
+  salida: ['🚪', 'Cerró sesión'],
+  fallo: ['⚠️', 'Código incorrecto'],
+  bloqueado: ['⛔', 'Código anulado tras 5 fallos'],
+  no_autorizado: ['🚫', 'Pidió código un email sin acceso'],
+  no_autorizado_codigo: ['🚫', 'Intentó entrar un email sin acceso'],
+  token_invalido: ['🚫', 'Intento con una sesión no válida o caducada'],
+  sin_permiso: ['🚫', 'Intentó usar una función de administrador'],
+  peticion_rara: ['🚫', 'Petición desconocida al motor'],
+  limite: ['⚠️', 'Demasiadas peticiones de código seguidas'],
+  caducado: ['⚠️', 'Usó un código caducado'],
+  expulsado: ['✖️', 'Expulsado'],
+  caducada: ['⌛', 'Sesión caducada por no usarla'],
+  todas_cerradas: ['🔒', 'Se cerraron todas las sesiones'],
+};
+let REG = null, regFiltro = 'todos';
+function diaReg(t) {
+  const d = t.slice(0, 10), hoy = hoyLocal();
+  if (d === hoy) return 'Hoy';
+  if (d === sumar(hoy, -1)) return 'Ayer';
+  const f = fLarga(d); return f.charAt(0).toUpperCase() + f.slice(1);
+}
+async function abrirRegistro(recargar) {
+  if (!REG || recargar) {
+    abrirHoja('<h2>Registro de actividad</h2><div class="cargando">Cargando…</div>');
+    try { REG = (await api('registro')).registro; }
+    catch (e) { abrirHoja('<h2>Registro de actividad</h2><div class="aviso mal">' + esc(msgError(e)) + '</div><div class="acciones"><button class="btn prim" id="r-cerrar">Cerrar</button></div>'); $('#r-cerrar').onclick = cerrarHoja; REG = null; return; }
+  }
+  const emails = Array.from(new Set(REG.map(x => x.e).filter(Boolean)));
+  const etiquetaFiltro = e => e === 'todos' ? 'Todos' : e === 'intentos' ? '🚫 Intentos' : esc(e);
+  if (regFiltro !== 'todos' && regFiltro !== 'intentos' && emails.indexOf(regFiltro) < 0) regFiltro = 'todos';
+  let h = '<h2>Registro de actividad</h2><div class="hint">Quién ha entrado y cuándo, y los intentos no autorizados (en rojo). Últimos 90 días. «Abrió la app» se apunta como mucho cada 30 minutos por móvil.</div>';
+  const n24 = REG.filter(x => /no_autorizado|token_invalido|sin_permiso|peticion_rara|bloqueado/.test(x.k) && x.t >= sumar(hoyLocal(), -1)).length;
+  if (n24) h += '<div class="aviso mal"><b>' + n24 + (n24 === 1 ? ' intento no autorizado' : ' intentos no autorizados') + ' desde ayer</b>Revisa las líneas en rojo.</div>';
+  h += '<div class="chips" style="padding-top:6px">' + ['todos', 'intentos'].concat(emails).map(e => '<button class="chip' + (e === regFiltro ? ' on' : '') + '" data-regf="' + esc(e) + '">' + etiquetaFiltro(e) + '</button>').join('') + '</div>';
+  const esIntento = x => /fallo|bloqueado|no_autorizado|token_invalido|sin_permiso|peticion_rara|limite|caducado$/.test(x.k);
+  const lista = REG.filter(x => regFiltro === 'todos' || (regFiltro === 'intentos' ? esIntento(x) : x.e === regFiltro));
+  if (!lista.length) h += '<div class="vacio-lista"><b>Sin actividad</b></div>';
+  let dia = '';
+  lista.forEach(x => {
+    const dd = diaReg(x.t);
+    if (dd !== dia) { if (dia) h += '</div>'; h += '<div class="grupo">' + esc(dd) + '</div><div class="detalle" style="margin-top:0;padding:4px 14px">'; dia = dd; }
+    const tp = TIPOS_REG[x.k] || ['•', x.k];
+    const alerta = /fallo|bloqueado|no_autorizado|expulsado|token_invalido|sin_permiso|peticion_rara|limite|caducado$/.test(x.k);
+    h += '<div class="dato" style="align-items:flex-start"><span style="min-width:52px">' + esc(x.t.slice(11, 16)) + '</span><div style="flex:1;min-width:0">' +
+      '<b' + (alerta ? ' style="color:var(--bad)"' : '') + '>' + tp[0] + ' ' + esc(tp[1]) + '</b>' +
+      '<div style="font-size:14px;color:var(--muted);overflow-wrap:anywhere">' + esc(x.e || 'desconocido') + (x.d ? ' · ' + esc(x.d) : '') + '</div></div></div>';
+  });
+  if (dia) h += '</div>';
+  h += '<div class="acciones"><button class="btn" id="r-act">Actualizar</button><button class="btn prim" id="r-cerrar">Cerrar</button></div>';
+  abrirHoja(h);
+  $('#r-cerrar').onclick = cerrarHoja;
+  $('#r-act').onclick = () => abrirRegistro(true);
+  document.querySelectorAll('[data-regf]').forEach(b => { b.onclick = () => { regFiltro = b.dataset.regf; abrirRegistro(); }; });
 }
 
 /* ---------- Calendarios (solo administrador) ---------- */
@@ -462,19 +456,17 @@ $('#btnMenu').onclick = abrirMenu;
 
 function iniciar() {
   if (!SES) { pantallaEntrar(''); return; }
-  if (bloqueoId() && !desbloqueada) { pantallaBloqueo(); return; }
   const copia = leer('nv-datos');
   if (copia) { D = copia; render(); } else $('#vista').innerHTML = '<div class="cargando">Cargando reservas…</div>';
   cargar();
 }
-const activa = () => SES && (desbloqueada || !bloqueoId());
-document.addEventListener('visibilitychange', () => { if (!document.hidden && activa() && $('#velo').hidden) cargar(true); });
-setInterval(() => { if (!document.hidden && activa() && $('#velo').hidden) cargar(true); }, 5 * 60 * 1000);
-setInterval(() => { if (D && activa() && $('#velo').hidden) render(); }, 60 * 1000);
+document.addEventListener('visibilitychange', () => { if (!document.hidden && SES && $('#velo').hidden) cargar(true); });
+setInterval(() => { if (!document.hidden && SES && $('#velo').hidden) cargar(true); }, 5 * 60 * 1000);
+setInterval(() => { if (D && SES && $('#velo').hidden) render(); }, 60 * 1000);
 (async () => {
   try { if (navigator.storage && navigator.storage.persist) navigator.storage.persist(); } catch (e) { /* nada */ }
   if (!SES) { const s = await leerSesionIdb(); if (s && s.token) { SES = s; guardar('nv-sesion', s); } }
   else guardarSesion(SES);
-  if (SES && !bloqueoId()) { const b = await idb('readonly', st => st.get('bloqueo')); if (b && b.id) guardar('nv-bloqueo', b); }
+  limpiarBloqueoAntiguo();
   iniciar();
 })();
