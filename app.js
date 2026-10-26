@@ -1,0 +1,480 @@
+// Motor (Google Apps Script). No es secreto: sin email autorizado y código no devuelve nada.
+const MOTOR = 'https://script.google.com/macros/s/AKfycbwAc8n-dL2pH4oAlnUs1-JIZIphojfV5zoxsXSyJ01BcxWTyr4lTSpMWcV4PN8XoMCnLQ/exec';
+const PLATS = ['Booking', 'Airbnb', 'Vrbo'];
+const DSEM = ['dom', 'lun', 'mar', 'mié', 'jue', 'vie', 'sáb'];
+const DSEM_L = ['domingo', 'lunes', 'martes', 'miércoles', 'jueves', 'viernes', 'sábado'];
+const MES = ['ene', 'feb', 'mar', 'abr', 'may', 'jun', 'jul', 'ago', 'sep', 'oct', 'nov', 'dic'];
+const MES_L = ['enero', 'febrero', 'marzo', 'abril', 'mayo', 'junio', 'julio', 'agosto', 'septiembre', 'octubre', 'noviembre', 'diciembre'];
+
+let D = null, tab = 'proximas', filtro = 'todos', mes = null, diaSel = null, ocupado = false, sinConexion = false;
+const $ = s => document.querySelector(s);
+
+/* ---------- Almacén local (puede fallar en modo privado) ---------- */
+function leer(k) { try { return JSON.parse(localStorage.getItem(k)); } catch (e) { return null; } }
+function guardar(k, v) { try { localStorage.setItem(k, JSON.stringify(v)); } catch (e) { /* nada */ } }
+function borrar(k) { try { localStorage.removeItem(k); } catch (e) { /* nada */ } }
+let SES = leer('nv-sesion');
+
+/* Copia de la sesión en IndexedDB: en iPhone (app en pantalla de inicio) localStorage a veces se pierde al cerrar la app. */
+function idb(modo, fn) {
+  return new Promise(ok => {
+    try {
+      const rq = indexedDB.open('nv', 1);
+      rq.onupgradeneeded = () => rq.result.createObjectStore('kv');
+      rq.onerror = () => ok(null);
+      rq.onsuccess = () => {
+        try {
+          const tx = rq.result.transaction('kv', modo), st = tx.objectStore('kv');
+          const r = fn(st);
+          tx.oncomplete = () => ok(r && 'result' in r ? r.result : null);
+          tx.onerror = tx.onabort = () => ok(null);
+        } catch (e) { ok(null); }
+      };
+    } catch (e) { ok(null); }
+  });
+}
+function guardarSesion(s) { guardar('nv-sesion', s); return idb('readwrite', st => st.put(s, 'sesion')); }
+function borrarSesion() { borrar('nv-sesion'); return idb('readwrite', st => st.delete('sesion')); }
+function leerSesionIdb() { return idb('readonly', st => st.get('sesion')); }
+
+/* ---------- Motor ---------- */
+async function llamar(cuerpo) {
+  const r = await fetch(MOTOR, { method: 'POST', redirect: 'follow', cache: 'no-store', headers: { 'Content-Type': 'text/plain;charset=utf-8' }, body: JSON.stringify(cuerpo) });
+  if (!r.ok) throw new Error('El servidor respondió ' + r.status);
+  return r.json();
+}
+async function api(accion, extra) {
+  if (!SES) throw new Error('sesion');
+  const j = await llamar(Object.assign({ accion, token: SES.token }, extra || {}));
+  if (j.error === 'sesion') { salirLocal(); throw new Error('sesion'); }
+  if (j.error) throw new Error(j.mensaje || 'Error del servidor');
+  return j;
+}
+
+/* ---------- Utilidades ---------- */
+function sumar(ymd, n) { const p = ymd.split('-').map(Number); return new Date(Date.UTC(p[0], p[1] - 1, p[2] + n)).toISOString().slice(0, 10); }
+function noches(a, b) { const x = a.split('-').map(Number), y = b.split('-').map(Number); return Math.round((Date.UTC(y[0], y[1] - 1, y[2]) - Date.UTC(x[0], x[1] - 1, x[2])) / 864e5); }
+function dow(ymd) { const p = ymd.split('-').map(Number); return new Date(Date.UTC(p[0], p[1] - 1, p[2])).getUTCDay(); }
+function fCorta(ymd) { const p = ymd.split('-').map(Number); return DSEM[dow(ymd)] + ' ' + p[2] + ' ' + MES[p[1] - 1]; }
+function fLarga(ymd) { const p = ymd.split('-').map(Number); return DSEM_L[dow(ymd)] + ' ' + p[2] + ' de ' + MES_L[p[1] - 1]; }
+function nTxt(n) { return n + (n === 1 ? ' noche' : ' noches'); }
+function hoyLocal() { const d = new Date(); return d.getFullYear() + '-' + String(d.getMonth() + 1).padStart(2, '0') + '-' + String(d.getDate()).padStart(2, '0'); }
+function esc(s) { return String(s == null ? '' : s).replace(/[&<>"']/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c])); }
+function clase(r) { if (r.tipo === 'Bloqueo') return 'p-Bloqueo'; return PLATS.indexOf(r.plat) >= 0 ? 'p-' + r.plat : 'p-Otra'; }
+function etiqueta(r) { return r.tipo === 'Bloqueo' ? 'Bloqueado · ' + r.plat : r.plat; }
+function enChoque(id) { return D.solapes.some(p => p[0] === id || p[1] === id); }
+function hace(s) {
+  if (!s) return 'Aún no se ha comprobado';
+  const t = new Date(s.replace(' ', 'T')).getTime();
+  const min = Math.max(0, Math.round((Date.now() - t) / 60000));
+  if (min < 1) return 'Comprobado ahora mismo';
+  if (min < 60) return 'Comprobado hace ' + min + ' min';
+  const h = Math.round(min / 60);
+  return h < 24 ? 'Comprobado hace ' + h + ' h' : 'Comprobado el ' + s.slice(8, 10) + '/' + s.slice(5, 7);
+}
+let toastT = null;
+function toast(m) { const t = $('#toast'); t.textContent = m; t.classList.add('ver'); clearTimeout(toastT); toastT = setTimeout(() => t.classList.remove('ver'), 4200); }
+function msgError(e) { const m = e && e.message ? e.message : String(e || 'Error'); return /failed to fetch|load failed|networkerror/i.test(m) ? 'Sin conexión' : m; }
+function abrirHoja(html) { $('#hoja').innerHTML = '<div class="asa"></div>' + html; $('#velo').hidden = false; document.body.classList.add('bloq'); }
+function cerrarHoja() { $('#velo').hidden = true; document.body.classList.remove('bloq'); }
+
+/* ---------- Entrar con email y código ---------- */
+function pantallaEntrar(email) {
+  $('#cabecera').hidden = true; $('#pestanas').hidden = true;
+  $('#chips').innerHTML = ''; $('#avisos').innerHTML = '';
+  $('#vista').innerHTML = '<div class="login"><h2>Reservas Nuncio Viejo</h2>' +
+    '<p>Escribe tu email. Si tienes acceso, te llegará un código de 6 cifras.</p>' +
+    '<label class="campo">Email<input id="l-email" type="email" inputmode="email" autocomplete="email" value="' + esc(email || '') + '"></label>' +
+    '<div class="msg" id="l-msg"></div>' +
+    '<div class="acciones"><button class="btn prim" id="l-pedir">Enviarme el código</button></div></div>';
+  $('#l-pedir').onclick = pedirCodigo;
+  $('#l-email').onkeydown = e => { if (e.key === 'Enter') pedirCodigo(); };
+}
+async function pedirCodigo() {
+  const email = $('#l-email').value.trim();
+  if (!/^\S+@\S+\.\S+$/.test(email)) { $('#l-msg').innerHTML = '<div class="aviso mal">Escribe un email válido.</div>'; return; }
+  const b = $('#l-pedir'); b.disabled = true; b.textContent = 'Enviando…';
+  try {
+    const j = await llamar({ accion: 'pedirCodigo', email });
+    if (j.error) throw new Error(j.mensaje);
+    pantallaCodigo(email);
+  } catch (e) { $('#l-msg').innerHTML = '<div class="aviso mal">' + esc(msgError(e)) + '</div>'; b.disabled = false; b.textContent = 'Enviarme el código'; }
+}
+function pantallaCodigo(email) {
+  $('#vista').innerHTML = '<div class="login"><h2>Revisa tu correo</h2>' +
+    '<p>Si <b>' + esc(email) + '</b> tiene acceso, le habrá llegado un código de 6 cifras (mira también en correo no deseado).</p>' +
+    '<label class="campo">Código<input id="l-codigo" class="codigo" inputmode="numeric" autocomplete="one-time-code" maxlength="6"></label>' +
+    '<div class="msg" id="l-msg"></div>' +
+    '<div class="acciones"><button class="btn" id="l-volver">Volver</button><button class="btn prim" id="l-entrar">Entrar</button></div></div>';
+  $('#l-codigo').focus();
+  $('#l-volver').onclick = () => pantallaEntrar(email);
+  const entrar = async () => {
+    const codigo = $('#l-codigo').value.replace(/\D/g, '');
+    if (codigo.length !== 6) { $('#l-msg').innerHTML = '<div class="aviso mal">El código tiene 6 cifras.</div>'; return; }
+    const b = $('#l-entrar'); b.disabled = true; b.textContent = 'Entrando…';
+    try {
+      const j = await llamar({ accion: 'entrar', email, codigo, dispositivo: nombreDispositivo() });
+      if (j.error) throw new Error(j.mensaje);
+      SES = { token: j.token, email: j.email, admin: !!j.admin };
+      await guardarSesion(SES);
+      iniciar();
+    } catch (e) { $('#l-msg').innerHTML = '<div class="aviso mal">' + esc(msgError(e)) + '</div>'; b.disabled = false; b.textContent = 'Entrar'; }
+  };
+  $('#l-entrar').onclick = entrar;
+  $('#l-codigo').oninput = e => { if (e.target.value.replace(/\D/g, '').length === 6) entrar(); };
+}
+function salirLocal() { const email = SES && SES.email; SES = null; D = null; borrarSesion(); borrar('nv-datos'); quitarBloqueoLocal(); desbloqueada = false; cerrarHoja(); pantallaEntrar(email); }
+
+function nombreDispositivo() {
+  const ua = navigator.userAgent || '';
+  const so = /iPhone/.test(ua) ? 'iPhone' : /iPad/.test(ua) || (/Macintosh/.test(ua) && navigator.maxTouchPoints > 1) ? 'iPad'
+    : /Android/.test(ua) ? 'Android' : /Macintosh/.test(ua) ? 'Mac' : /Windows/.test(ua) ? 'Windows' : 'Otro';
+  const app = (window.matchMedia && matchMedia('(display-mode: standalone)').matches) || navigator.standalone;
+  const nav = app ? 'app instalada' : /EdgA?\//.test(ua) ? 'Edge' : /CriOS|Chrome\//.test(ua) ? 'Chrome' : /FxiOS|Firefox\//.test(ua) ? 'Firefox' : /Safari\//.test(ua) ? 'Safari' : 'navegador';
+  return so + ' · ' + nav;
+}
+
+/* ---------- Bloqueo con Face ID / huella (opcional, por móvil) ---------- */
+const BLOQUEO_MIN = 5;   // minutos fuera de la app antes de volver a pedirlo
+let desbloqueada = false, ocultaDesde = 0;
+const b64u = buf => btoa(String.fromCharCode.apply(null, new Uint8Array(buf))).replace(/\+/g, '-').replace(/\//g, '_').replace(/=+$/, '');
+const deB64u = t => Uint8Array.from(atob(t.replace(/-/g, '+').replace(/_/g, '/')), c => c.charCodeAt(0));
+const azar = n => crypto.getRandomValues(new Uint8Array(n));
+function bloqueoId() { const b = leer('nv-bloqueo'); return b && b.id ? b.id : null; }
+function quitarBloqueoLocal() { borrar('nv-bloqueo'); idb('readwrite', st => st.delete('bloqueo')); }
+async function hayBiometria() {
+  try { return !!(window.PublicKeyCredential && await PublicKeyCredential.isUserVerifyingPlatformAuthenticatorAvailable()); } catch (e) { return false; }
+}
+async function activarBloqueo() {
+  const cred = await navigator.credentials.create({ publicKey: {
+    rp: { name: 'Reservas Nuncio Viejo', id: location.hostname },
+    user: { id: azar(16), name: SES.email, displayName: 'Reservas · ' + SES.email },
+    challenge: azar(32),
+    pubKeyCredParams: [{ type: 'public-key', alg: -7 }, { type: 'public-key', alg: -257 }],
+    authenticatorSelection: { authenticatorAttachment: 'platform', userVerification: 'required', residentKey: 'preferred' },
+    timeout: 60000, attestation: 'none',
+  } });
+  const b = { id: b64u(cred.rawId) };
+  guardar('nv-bloqueo', b); await idb('readwrite', st => st.put(b, 'bloqueo'));
+}
+async function comprobarBiometria() {
+  const id = bloqueoId();
+  if (!id) return true;
+  const a = await navigator.credentials.get({ publicKey: {
+    challenge: azar(32), rpId: location.hostname, userVerification: 'required', timeout: 60000,
+    allowCredentials: [{ type: 'public-key', id: deB64u(id) }],
+  } });
+  const datos = new Uint8Array(a.response.authenticatorData);
+  return b64u(a.rawId) === id && (datos[32] & 0x04) === 0x04;   // la huella o la cara se han comprobado de verdad
+}
+function pantallaBloqueo() {
+  $('#cabecera').hidden = true; $('#pestanas').hidden = true; $('#chips').innerHTML = ''; $('#avisos').innerHTML = '';
+  cerrarHoja();
+  $('#vista').innerHTML = '<div class="login" style="text-align:center"><div style="font-size:56px;line-height:1">🔒</div><h2>Reservas bloqueadas</h2>' +
+    '<p>Desbloquea con Face ID o con tu huella.</p><div class="msg" id="b-msg"></div>' +
+    '<div class="acciones"><button class="btn prim" id="b-abrir">Desbloquear</button></div>' +
+    '<p style="margin-top:22px"><button class="btn" id="b-codigo" style="border:0;background:transparent;color:var(--muted);font-weight:600">No puedo · entrar con el código del email</button></p></div>';
+  const abrir = async () => {
+    try {
+      if (await comprobarBiometria()) { desbloqueada = true; iniciar(); }
+      else $('#b-msg').innerHTML = '<div class="aviso mal">No se ha podido comprobar.</div>';
+    } catch (e) { $('#b-msg').innerHTML = '<div class="aviso mal">No se ha podido comprobar. Inténtalo otra vez.</div>'; }
+  };
+  $('#b-abrir').onclick = abrir;
+  $('#b-codigo').onclick = salirLocal;
+}
+document.addEventListener('visibilitychange', () => {
+  if (document.hidden) { ocultaDesde = Date.now(); return; }
+  if (bloqueoId() && desbloqueada && ocultaDesde && Date.now() - ocultaDesde > BLOQUEO_MIN * 60000) { desbloqueada = false; D = null; pantallaBloqueo(); }
+});
+
+/* ---------- Carga ---------- */
+async function cargar(silencioso) {
+  if (!activa()) return;
+  try {
+    const nuevo = await api('datos');
+    if (!activa()) return;
+    D = nuevo;
+    sinConexion = false;
+    guardar('nv-datos', D);
+    render();
+  } catch (e) {
+    if (msgError(e) === 'sesion') return;
+    const copia = leer('nv-datos');
+    if (copia) { D = copia; sinConexion = true; render(); if (!silencioso) toast('Sin conexión: se muestran los últimos datos'); }
+    else if (!silencioso) $('#vista').innerHTML = '<div class="vacio-lista"><b>No se pudieron cargar las reservas</b>' + esc(msgError(e)) + '<p><button class="btn" data-accion="recargar">Reintentar</button></p></div>';
+  }
+}
+async function sincronizar() {
+  if (ocupado || !SES) return;
+  ocupado = true;
+  const b = $('#btnSync'); b.classList.add('girando'); $('#sub').textContent = 'Comprobando Booking, Airbnb y Vrbo…';
+  try { D = await api('sincronizar'); sinConexion = false; guardar('nv-datos', D); render(); toast('Reservas al día'); }
+  catch (e) { if (msgError(e) !== 'sesion') { toast(msgError(e)); if (D) render(); } }
+  finally { ocupado = false; b.classList.remove('girando'); }
+}
+
+/* ---------- Pintar ---------- */
+function render() {
+  if (!D) return;
+  D.hoy = hoyLocal();
+  $('#cabecera').hidden = false; $('#pestanas').hidden = false;
+  $('#sub').innerHTML = esc(hace(D.ultimaSync)) + (sinConexion ? ' · <span class="offline">sin conexión</span>' : '');
+  renderAvisos();
+  document.querySelectorAll('.tabs button').forEach(b => b.classList.toggle('on', b.dataset.tab === tab));
+  const ch = ['todos'].concat(D.apartamentos);
+  if (ch.indexOf(filtro) < 0) filtro = 'todos';
+  $('#chips').innerHTML = ch.map(a => '<button class="chip' + (a === filtro ? ' on' : '') + '" data-filtro="' + esc(a) + '">' + (a === 'todos' ? 'Los dos' : esc(a)) + '</button>').join('');
+  if (tab === 'proximas') renderProximas(); else renderCalendario();
+}
+
+function renderAvisos() {
+  const h = [];
+  const porId = {}; D.reservas.forEach(r => { porId[r.id] = r; });
+  D.solapes.forEach(p => {
+    const a = porId[p[0]], b = porId[p[1]];
+    if (!a || !b) return;
+    h.push('<div class="aviso"><b>⚠️ Posible doble reserva · ' + esc(a.apt) + '</b>' + esc(etiqueta(a)) + ': ' + esc(fCorta(a.entrada)) + ' → ' + esc(fCorta(a.salida)) + '<br>' + esc(etiqueta(b)) + ': ' + esc(fCorta(b.entrada)) + ' → ' + esc(fCorta(b.salida)) + '</div>');
+  });
+  const malas = D.fuentes.filter(f => f.tieneUrl && !f.ok && f.error && !f.provisional);
+  if (malas.length) h.push('<div class="aviso mal"><b>No se puede leer ' + (malas.length === 1 ? 'un calendario' : malas.length + ' calendarios') + '</b>' + malas.map(f => esc(f.plat + ' · ' + f.apt)).join('<br>') + '<br><span style="color:var(--muted)">Sus reservas pueden no estar al día.</span></div>');
+  const faltan = D.fuentes.filter(f => !f.tieneUrl);
+  if (faltan.length && D.admin) h.push('<div class="aviso"><b>Faltan ' + faltan.length + ' calendarios por conectar</b><button class="btn" style="margin-top:8px;width:100%" data-accion="calendarios">Conectar calendarios</button></div>');
+  $('#avisos').innerHTML = h.join('');
+}
+
+function tarjeta(r) {
+  const hoy = D.hoy, man = sumar(hoy, 1);
+  let tag = '';
+  if (r.entrada === hoy) tag = 'Entra hoy';
+  else if (r.salida === hoy) tag = 'Sale hoy';
+  else if (r.entrada === man) tag = 'Entra mañana';
+  else if (r.salida === man) tag = 'Sale mañana';
+  else if (r.entrada < hoy && r.salida > hoy) tag = 'Sale ' + fCorta(r.salida);
+  else { const n = noches(hoy, r.entrada); if (n <= 30) tag = 'En ' + n + ' días'; }
+  const datos = [];
+  if (r.nombre) datos.push(esc(r.nombre));
+  if (r.tel4) datos.push('📞 …' + esc(r.tel4));
+  return '<button class="card ' + clase(r) + (enChoque(r.id) ? ' choque' : '') + '" data-id="' + esc(r.id) + '">' +
+    '<div class="card-top"><span class="pill">' + esc(etiqueta(r)) + '</span><span class="apt">' + esc(r.apt) + '</span>' +
+    (r.nueva ? '<span class="tag nueva">Nueva</span>' : '') + (tag ? '<span class="tag"' + (r.nueva ? ' style="margin-left:0"' : '') + '>' + esc(tag) + '</span>' : '') + '</div>' +
+    '<div class="fechas">' + esc(fCorta(r.entrada)) + ' → ' + esc(fCorta(r.salida)) + ' <span class="n">· ' + nTxt(noches(r.entrada, r.salida)) + '</span></div>' +
+    (datos.length ? '<div class="quien">' + datos.join(' · ') + '</div>' : '') +
+    (enChoque(r.id) ? '<div class="alerta-txt">⚠️ Se solapa con otra reserva</div>' : '') +
+    '</button>';
+}
+
+function renderProximas() {
+  const hoy = D.hoy, man = sumar(hoy, 1), sem = sumar(hoy, 7);
+  const rs = D.reservas.filter(r => r.salida >= hoy && (filtro === 'todos' || r.apt === filtro))
+    .sort((a, b) => (a.entrada + a.apt).localeCompare(b.entrada + b.apt));
+  const grupos = [
+    ['Hoy', rs.filter(r => r.entrada === hoy || r.salida === hoy)],
+    ['Ahora alojados', rs.filter(r => r.entrada < hoy && r.salida > hoy)],
+    ['Mañana', rs.filter(r => r.entrada === man)],
+    ['Próximos 7 días', rs.filter(r => r.entrada > man && r.entrada <= sem)],
+    ['Más adelante', rs.filter(r => r.entrada > sem)],
+  ];
+  let h = '';
+  grupos.forEach(g => { if (g[1].length) h += '<div class="grupo">' + g[0] + '</div>' + g[1].map(tarjeta).join(''); });
+  $('#vista').innerHTML = h || '<div class="vacio-lista"><b>No hay reservas próximas</b>Cuando entre una en Booking, Airbnb o Vrbo aparecerá aquí.</div>';
+}
+
+function renderCalendario() {
+  if (!mes) mes = D.hoy.slice(0, 7);
+  const p = mes.split('-').map(Number);
+  const primero = mes + '-01';
+  const desfase = (dow(primero) + 6) % 7;
+  const diasMes = new Date(Date.UTC(p[0], p[1], 0)).getUTCDate();
+  const semanas = Math.ceil((desfase + diasMes) / 7);
+  const inicio = sumar(primero, -desfase);
+  const apts = filtro === 'todos' ? D.apartamentos : [filtro];
+  const ocup = {}; apts.forEach(a => { ocup[a] = {}; });
+  D.reservas.forEach(r => { if (!ocup[r.apt]) return; for (let d = r.entrada; d < r.salida; d = sumar(d, 1)) if (!ocup[r.apt][d]) ocup[r.apt][d] = r; });
+  if (!diaSel || diaSel.slice(0, 7) !== mes) diaSel = D.hoy.slice(0, 7) === mes ? D.hoy : primero;
+
+  let h = '<div class="mes"><button class="icon-btn" data-mes="-1" aria-label="Mes anterior"><svg viewBox="0 0 24 24" fill="none" stroke-width="2.2" stroke-linecap="round"><path d="M15 5l-7 7 7 7"/></svg></button>' +
+    '<h2>' + MES_L[p[1] - 1] + ' ' + p[0] + '</h2>' +
+    '<button class="icon-btn" data-mes="1" aria-label="Mes siguiente"><svg viewBox="0 0 24 24" fill="none" stroke-width="2.2" stroke-linecap="round"><path d="M9 5l7 7-7 7"/></svg></button></div>';
+  h += '<div class="leyenda">' + PLATS.map(x => '<span class="p-' + x + '"><i></i>' + x + '</span>').join('') + '<span class="p-Bloqueo"><i></i>Bloqueado</span></div>';
+  if (apts.length > 1) h += '<div class="carriles">Cada día: ' + apts.map((a, i) => (i === 0 ? 'arriba ' : 'abajo ') + '<b>' + esc(a) + '</b>').join(' · ') + '</div>';
+  h += '<div class="grid">' + ['L', 'M', 'X', 'J', 'V', 'S', 'D'].map(x => '<div class="dsem">' + x + '</div>').join('');
+  for (let i = 0; i < semanas * 7; i++) {
+    const d = sumar(inicio, i);
+    const cls = ['dia'];
+    if (d.slice(0, 7) !== mes) cls.push('fuera');
+    if (i % 7 >= 5) cls.push('finde');
+    if (d === D.hoy) cls.push('hoy');
+    if (d === diaSel) cls.push('sel');
+    h += '<button class="' + cls.join(' ') + '" data-dia="' + d + '"><span class="num">' + Number(d.slice(8)) + '</span>';
+    apts.forEach(a => {
+      const r = ocup[a][d];
+      h += '<span class="carril">' + (r ? '<i class="barra ' + clase(r) + (r.entrada === d ? ' ini' : '') + (sumar(d, 1) === r.salida ? ' fin' : '') + '"></i>' : '') + '</span>';
+    });
+    h += '</button>';
+  }
+  h += '</div>';
+
+  const fl = fLarga(diaSel);
+  h += '<div class="detalle"><h3>' + fl.charAt(0).toUpperCase() + fl.slice(1) + '</h3>';
+  apts.forEach(a => {
+    const r = ocup[a][diaSel];
+    const sale = D.reservas.find(x => x.apt === a && x.salida === diaSel);
+    h += '<div class="dfila"><div class="dapt">' + esc(a) + '</div>';
+    if (sale && (!r || r.id !== sale.id)) h += miniTarjeta(sale, 'Sale');
+    if (r) h += miniTarjeta(r, r.entrada === diaSel ? 'Entra' : 'Ocupado');
+    if (!r) h += '<div class="libre" style="margin-top:4px">Libre esta noche</div>';
+    h += '</div>';
+  });
+  h += '</div>';
+  $('#vista').innerHTML = h;
+}
+
+function miniTarjeta(r, txt) {
+  const q = r.tipo === 'Bloqueo' ? 'Fechas cerradas' : (r.nombre || 'Reserva');
+  return '<button class="mini ' + clase(r) + '" data-id="' + esc(r.id) + '"><span class="pill">' + esc(etiqueta(r)) + '</span>' +
+    '<span class="q">' + esc(q) + '<small>' + esc(txt) + ' · ' + esc(fCorta(r.entrada)) + ' → ' + esc(fCorta(r.salida)) + '</small></span></button>';
+}
+
+/* ---------- Detalle de una reserva (solo consulta) ---------- */
+function abrirReserva(id) {
+  const r = D.reservas.find(x => x.id === id);
+  if (!r) return;
+  const n = noches(r.entrada, r.salida);
+  let h = '<div class="hoja-top ' + clase(r) + '"><span class="pill">' + esc(etiqueta(r)) + '</span><span class="apt">' + esc(r.apt) + '</span></div>' +
+    '<h2>' + esc(fCorta(r.entrada)) + ' → ' + esc(fCorta(r.salida)) + '</h2>' +
+    '<div class="detalle" style="margin-top:12px">' +
+    '<div class="dato"><span>Entrada</span><b>' + esc(fLarga(r.entrada)) + '</b></div>' +
+    '<div class="dato"><span>Salida</span><b>' + esc(fLarga(r.salida)) + '</b></div>' +
+    '<div class="dato"><span>Noches</span><b>' + n + '</b></div>' +
+    '<div class="dato"><span>Plataforma</span><b>' + esc(r.plat) + '</b></div>' +
+    (r.nombre ? '<div class="dato"><span>Huésped</span><b>' + esc(r.nombre) + '</b></div>' : '') +
+    (r.tel4 ? '<div class="dato"><span>Teléfono</span><b>acaba en ' + esc(r.tel4) + '</b></div>' : '') +
+    (r.codigo ? '<div class="dato"><span>Código</span><b>' + esc(r.codigo) + '</b></div>' : '') +
+    '</div>';
+  if (enChoque(r.id)) h += '<div class="aviso" style="margin-top:12px"><b>⚠️ Se solapa con otra reserva</b>Revísalo en las plataformas.</div>';
+  if (r.plat === 'Booking') h += '<div class="hint">Booking no comparte el nombre del huésped por calendario: los datos están en la app de Booking.</div>';
+  h += '<div class="acciones">' + (r.enlace ? '<a class="btn" target="_blank" rel="noopener" href="' + esc(r.enlace) + '">Ver en ' + esc(r.plat) + '</a>' : '') + '<button class="btn prim" id="f-cerrar">Cerrar</button></div>';
+  abrirHoja(h);
+  $('#f-cerrar').onclick = cerrarHoja;
+}
+
+/* ---------- Menú ---------- */
+function abrirMenu() {
+  let h = '<h2>Menú</h2><div class="hint">Has entrado como <b>' + esc(SES.email) + '</b></div><div class="menu-lista">';
+  if (SES.admin) h += '<button class="btn" id="m-cal">Calendarios de las plataformas</button><button class="btn" id="m-disp">Dispositivos conectados</button>';
+  h += '<button class="btn" id="m-bloq" hidden></button>';
+  h += '<button class="btn peligro" id="m-salir">Cerrar sesión en este móvil</button><button class="btn prim" id="m-cerrar">Volver</button></div><div class="msg" id="m-msg"></div>';
+  abrirHoja(h);
+  if (SES.admin) { $('#m-cal').onclick = abrirCalendarios; $('#m-disp').onclick = abrirDispositivos; }
+  hayBiometria().then(si => {
+    const b = $('#m-bloq'); if (!si || !b) return;
+    b.hidden = false; b.textContent = bloqueoId() ? 'Bloqueo con Face ID / huella: activado · Quitar' : 'Activar bloqueo con Face ID / huella';
+    b.onclick = async () => {
+      try {
+        if (bloqueoId()) { if (!(await comprobarBiometria())) throw new Error('x'); quitarBloqueoLocal(); toast('Bloqueo quitado'); }
+        else { await activarBloqueo(); desbloqueada = true; toast('Bloqueo activado: se pedirá al abrir la app'); }
+        abrirMenu();
+      } catch (e) { $('#m-msg').innerHTML = '<div class="aviso mal">No se ha podido. Inténtalo otra vez.</div>'; }
+    };
+  });
+  $('#m-cerrar').onclick = cerrarHoja;
+  $('#m-salir').onclick = async () => { try { await llamar({ accion: 'salir', token: SES.token }); } catch (e) { /* nada */ } salirLocal(); };
+}
+
+/* ---------- Dispositivos conectados (solo administrador) ---------- */
+function fFecha(t) { return t ? t.slice(8, 10) + '/' + t.slice(5, 7) + '/' + t.slice(0, 4) + ' ' + t.slice(11, 16) : ''; }
+async function abrirDispositivos(lista) {
+  if (!Array.isArray(lista)) {
+    abrirHoja('<h2>Dispositivos conectados</h2><div class="cargando">Cargando…</div>');
+    try { lista = (await api('dispositivos')).dispositivos; } catch (e) { abrirHoja('<h2>Dispositivos conectados</h2><div class="aviso mal">' + esc(msgError(e)) + '</div><div class="acciones"><button class="btn prim" id="d-cerrar">Cerrar</button></div>'); $('#d-cerrar').onclick = cerrarHoja; return; }
+  }
+  let h = '<h2>Dispositivos conectados</h2><div class="hint">Móviles y navegadores que han entrado con código. Si alguno no lo reconoces, expúlsalo: tendrá que volver a pedir código.</div>';
+  lista.forEach(x => {
+    h += '<div class="detalle"><div class="dato"><span>Dispositivo</span><b>' + esc(x.dispositivo) + (x.actual ? ' · <span style="color:var(--ok)">este</span>' : '') + '</b></div>' +
+      '<div class="dato"><span>Email</span><b>' + esc(x.email) + '</b></div>' +
+      '<div class="dato"><span>Entró</span><b>' + esc(fFecha(x.creada)) + '</b></div>' +
+      '<div class="dato"><span>Último uso</span><b>' + esc(fFecha(x.uso)) + '</b></div>' +
+      (x.actual ? '' : '<button class="btn peligro" style="width:100%;margin-top:8px" data-expulsar="' + esc(x.id) + '">Expulsar</button>') + '</div>';
+  });
+  h += '<div class="msg" id="d-msg"></div><div class="acciones"><button class="btn prim" id="d-cerrar">Cerrar</button></div>';
+  abrirHoja(h);
+  $('#d-cerrar').onclick = cerrarHoja;
+  document.querySelectorAll('[data-expulsar]').forEach(b => {
+    b.onclick = async () => {
+      if (!b.dataset.seguro) { b.dataset.seguro = '1'; b.textContent = '¿Seguro? Toca otra vez para expulsar'; return; }
+      b.disabled = true; b.textContent = 'Expulsando…';
+      try { abrirDispositivos((await api('expulsar', { id: b.dataset.expulsar })).dispositivos); toast('Expulsado'); }
+      catch (e) { $('#d-msg').innerHTML = '<div class="aviso mal">' + esc(msgError(e)) + '</div>'; b.disabled = false; b.textContent = 'Expulsar'; }
+    };
+  });
+}
+
+/* ---------- Calendarios (solo administrador) ---------- */
+function abrirCalendarios() {
+  if (!D || !D.admin) return;
+  let h = '<h2>Calendarios</h2><div class="hint">Pega en cada uno el enlace de <b>Exportar calendario</b> de la plataforma. Solo se usan para leer las fechas; no permiten cambiar nada.</div>';
+  D.fuentes.forEach((f, i) => {
+    const est = !f.tieneUrl ? '<div class="est">Sin conectar</div>'
+      : f.ok ? '<div class="est ok">✓ Leído · ' + (f.eventos || 0) + ((f.eventos || 0) === 1 ? ' fecha' : ' fechas') + '</div>'
+      : '<div class="est mal">' + esc(f.error || 'Pendiente de comprobar') + '</div>';
+    h += '<div class="cal-fila p-' + esc(f.plat) + '"><div class="tit"><span class="pill">' + esc(f.plat) + '</span>' + esc(f.apt) + '</div>' +
+      '<input data-i="' + i + '" type="url" inputmode="url" autocomplete="off" spellcheck="false" placeholder="https://… (.ics)" value="' + esc(f.url || '') + '">' + est + '</div>';
+  });
+  h += '<div class="msg" id="f-msg"></div><div class="acciones"><button class="btn" id="c-cerrar">Cerrar</button><button class="btn prim" id="c-guardar">Guardar y comprobar</button></div>';
+  abrirHoja(h);
+  $('#c-cerrar').onclick = cerrarHoja;
+  $('#c-guardar').onclick = async () => {
+    const fuentes = D.fuentes.map((f, i) => ({ apt: f.apt, plat: f.plat, url: document.querySelector('input[data-i="' + i + '"]').value.trim() }));
+    const b = $('#c-guardar'); b.disabled = true; b.textContent = 'Comprobando…';
+    try { D = await api('guardarFuentes', { fuentes }); guardar('nv-datos', D); render(); abrirCalendarios(); toast('Guardado'); }
+    catch (e) { $('#f-msg').innerHTML = '<div class="aviso mal">' + esc(msgError(e)) + '</div>'; b.disabled = false; b.textContent = 'Guardar y comprobar'; }
+  };
+}
+
+/* ---------- Instalar como app ---------- */
+let avisoInstalar = null;
+window.addEventListener('beforeinstallprompt', e => {
+  e.preventDefault();
+  avisoInstalar = e;
+  $('#instalar').innerHTML = '<div class="instalar"><p><b>Instala la app</b> para tenerla en la pantalla de inicio.</p><button class="btn prim" id="btnInstalar">Instalar</button></div>';
+  $('#btnInstalar').onclick = async () => { avisoInstalar.prompt(); await avisoInstalar.userChoice; avisoInstalar = null; $('#instalar').innerHTML = ''; };
+});
+window.addEventListener('appinstalled', () => { $('#instalar').innerHTML = ''; });
+if ('serviceWorker' in navigator) navigator.serviceWorker.register('sw.js').catch(() => {});
+
+/* ---------- Eventos ---------- */
+document.addEventListener('click', e => {
+  const t = e.target;
+  const ac = t.closest('[data-accion]');
+  if (ac) { if (ac.dataset.accion === 'recargar') cargar(); else if (ac.dataset.accion === 'calendarios') abrirCalendarios(); return; }
+  if (t.closest('.hoja') && !t.closest('[data-id]')) return;
+  const tb = t.closest('.tabs button'); if (tb) { tab = tb.dataset.tab; render(); window.scrollTo(0, 0); return; }
+  const ch = t.closest('[data-filtro]'); if (ch) { filtro = ch.dataset.filtro; render(); return; }
+  const mb = t.closest('[data-mes]');
+  if (mb) { const p = mes.split('-').map(Number); const d = new Date(Date.UTC(p[0], p[1] - 1 + Number(mb.dataset.mes), 1)); mes = d.toISOString().slice(0, 7); diaSel = null; render(); return; }
+  const di = t.closest('[data-dia]'); if (di) { diaSel = di.dataset.dia; if (diaSel.slice(0, 7) !== mes) mes = diaSel.slice(0, 7); render(); return; }
+  const re = t.closest('[data-id]'); if (re) abrirReserva(re.dataset.id);
+});
+$('#velo').addEventListener('click', e => { if (e.target.id === 'velo') cerrarHoja(); });
+$('#btnSync').onclick = sincronizar;
+$('#btnMenu').onclick = abrirMenu;
+
+function iniciar() {
+  if (!SES) { pantallaEntrar(''); return; }
+  if (bloqueoId() && !desbloqueada) { pantallaBloqueo(); return; }
+  const copia = leer('nv-datos');
+  if (copia) { D = copia; render(); } else $('#vista').innerHTML = '<div class="cargando">Cargando reservas…</div>';
+  cargar();
+}
+const activa = () => SES && (desbloqueada || !bloqueoId());
+document.addEventListener('visibilitychange', () => { if (!document.hidden && activa() && $('#velo').hidden) cargar(true); });
+setInterval(() => { if (!document.hidden && activa() && $('#velo').hidden) cargar(true); }, 5 * 60 * 1000);
+setInterval(() => { if (D && activa() && $('#velo').hidden) render(); }, 60 * 1000);
+(async () => {
+  try { if (navigator.storage && navigator.storage.persist) navigator.storage.persist(); } catch (e) { /* nada */ }
+  if (!SES) { const s = await leerSesionIdb(); if (s && s.token) { SES = s; guardar('nv-sesion', s); } }
+  else guardarSesion(SES);
+  if (SES && !bloqueoId()) { const b = await idb('readonly', st => st.get('bloqueo')); if (b && b.id) guardar('nv-bloqueo', b); }
+  iniciar();
+})();
