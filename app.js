@@ -181,7 +181,15 @@ function renderAvisos() {
   D.solapes.forEach(p => {
     const a = porId[p[0]], b = porId[p[1]];
     if (!a || !b) return;
-    h.push('<div class="aviso"><b>⚠️ Posible doble reserva · ' + esc(a.apt) + '</b>' + esc(etiqueta(a)) + ': ' + esc(fCorta(a.entrada)) + ' → ' + esc(fCorta(a.salida)) + '<br>' + esc(etiqueta(b)) + ': ' + esc(fCorta(b.entrada)) + ' → ' + esc(fCorta(b.salida)) + '</div>');
+    // Noches que se pisan (el día que uno sale y otro entra no cuenta)
+    const ini = a.entrada > b.entrada ? a.entrada : b.entrada, fin = a.salida < b.salida ? a.salida : b.salida;
+    const n = noches(ini, fin), falta = noches(D.hoy, ini);
+    const cuando = falta <= 0 ? 'Es ya: ¡hoy hay dos reservas!' : falta === 1 ? 'Empieza mañana' : 'Empieza en ' + falta + ' días';
+    const linea = r => '<button class="mini ' + clase(r) + '" data-id="' + esc(r.id) + '" style="margin-top:6px"><span class="pill">' + esc(etiqueta(r)) + '</span><span class="q">' + (r.dudoso ? 'Hasta ' + esc(fCorta(r.salida)) : esc(fCorta(r.entrada)) + ' → ' + esc(fCorta(r.salida))) + '<small>' + esc(r.nombre || (r.tipo === 'Bloqueo' ? 'Fechas cerradas' : 'Reserva')) + '</small></span></button>';
+    h.push('<div class="aviso mal"><b>🚨 Doble reserva · ' + esc(a.apt) + '</b>' +
+      'Coinciden ' + (n === 1 ? 'la noche del ' + esc(fCorta(ini)) : n + ' noches: del ' + esc(fCorta(ini)) + ' al ' + esc(fCorta(fin))) + '. ' + esc(cuando) + '.' +
+      linea(a) + linea(b) +
+      '<div style="margin-top:8px;color:var(--muted);font-size:14px">Entra en las plataformas y cancela o mueve una de las dos cuanto antes.</div></div>');
   });
   const malas = D.fuentes.filter(f => f.tieneUrl && !f.ok && f.error && !f.provisional);
   if (malas.length) h.push('<div class="aviso mal"><b>No se puede leer ' + (malas.length === 1 ? 'un calendario' : malas.length + ' calendarios') + '</b>' + malas.map(f => esc(f.plat + ' · ' + f.apt)).join('<br>') + '<br><span style="color:var(--muted)">Sus reservas pueden no estar al día.</span></div>');
@@ -193,7 +201,9 @@ function renderAvisos() {
 function tarjeta(r) {
   const hoy = D.hoy, man = sumar(hoy, 1);
   let tag = '';
-  if (r.entrada === hoy) tag = 'Entra hoy';
+  const dud = r.dudoso && r.entrada <= hoy;   // la plataforma no enseña cuándo entró
+  if (dud) tag = r.salida === hoy ? 'Sale hoy' : r.salida === man ? 'Sale mañana' : 'Sale ' + fCorta(r.salida);
+  else if (r.entrada === hoy) tag = 'Entra hoy';
   else if (r.salida === hoy) tag = 'Sale hoy';
   else if (r.entrada === man) tag = 'Entra mañana';
   else if (r.salida === man) tag = 'Sale mañana';
@@ -205,9 +215,10 @@ function tarjeta(r) {
   return '<button class="card ' + clase(r) + (enChoque(r.id) ? ' choque' : '') + '" data-id="' + esc(r.id) + '">' +
     '<div class="card-top"><span class="pill">' + esc(etiqueta(r)) + '</span><span class="apt">' + esc(r.apt) + '</span>' +
     (r.nueva ? '<span class="tag nueva">Nueva</span>' : '') + (tag ? '<span class="tag"' + (r.nueva ? ' style="margin-left:0"' : '') + '>' + esc(tag) + '</span>' : '') + '</div>' +
-    '<div class="fechas">' + esc(fCorta(r.entrada)) + ' → ' + esc(fCorta(r.salida)) + ' <span class="n">· ' + nTxt(noches(r.entrada, r.salida)) + '</span></div>' +
+    (dud ? '<div class="fechas">Hasta ' + esc(fCorta(r.salida)) + ' <span class="n">· entró hoy o antes</span></div>'
+      : '<div class="fechas">' + esc(fCorta(r.entrada)) + ' → ' + esc(fCorta(r.salida)) + ' <span class="n">· ' + nTxt(noches(r.entrada, r.salida)) + '</span></div>') +
     (datos.length ? '<div class="quien">' + datos.join(' · ') + '</div>' : '') +
-    (enChoque(r.id) ? '<div class="alerta-txt">⚠️ Se solapa con otra reserva</div>' : '') +
+    (enChoque(r.id) ? '<div class="alerta-txt" style="color:var(--bad)">🚨 Doble reserva: coincide con otra</div>' : '') +
     '</button>';
 }
 
@@ -216,8 +227,8 @@ function renderProximas() {
   const rs = D.reservas.filter(r => r.salida >= hoy && (filtro === 'todos' || r.apt === filtro))
     .sort((a, b) => (a.entrada + a.apt).localeCompare(b.entrada + b.apt));
   const grupos = [
-    ['Hoy', rs.filter(r => r.entrada === hoy || r.salida === hoy)],
-    ['Ahora alojados', rs.filter(r => r.entrada < hoy && r.salida > hoy)],
+    ['Hoy', rs.filter(r => (r.entrada === hoy && !r.dudoso) || r.salida === hoy)],
+    ['Ahora alojados', rs.filter(r => (r.entrada < hoy || (r.dudoso && r.entrada === hoy)) && r.salida > hoy)],
     ['Mañana', rs.filter(r => r.entrada === man)],
     ['Próximos 7 días', rs.filter(r => r.entrada > man && r.entrada <= sem)],
     ['Más adelante', rs.filter(r => r.entrada > sem)],
@@ -245,6 +256,14 @@ function renderCalendario() {
     '<button class="icon-btn" data-mes="1" aria-label="Mes siguiente"><svg viewBox="0 0 24 24" fill="none" stroke-width="2.2" stroke-linecap="round"><path d="M9 5l7 7-7 7"/></svg></button></div>';
   h += '<div class="leyenda">' + PLATS.map(x => '<span class="p-' + x + '"><i></i>' + x + '</span>').join('') + '<span class="p-Bloqueo"><i></i>Bloqueado</span></div>';
   if (apts.length > 1) h += '<div class="carriles">Cada día: ' + apts.map((a, i) => (i === 0 ? 'arriba ' : 'abajo ') + '<b>' + esc(a) + '</b>').join(' · ') + '</div>';
+  // Noches con doble reserva (por apartamento)
+  const choque = {};
+  const porId = {}; D.reservas.forEach(r => { porId[r.id] = r; });
+  D.solapes.forEach(p => {
+    const a = porId[p[0]], b = porId[p[1]]; if (!a || !b) return;
+    const ini = a.entrada > b.entrada ? a.entrada : b.entrada, fin = a.salida < b.salida ? a.salida : b.salida;
+    for (let n = ini; n < fin; n = sumar(n, 1)) choque[a.apt + '|' + n] = true;
+  });
   h += '<div class="grid">' + ['L', 'M', 'X', 'J', 'V', 'S', 'D'].map(x => '<div class="dsem">' + x + '</div>').join('');
   for (let i = 0; i < semanas * 7; i++) {
     const d = sumar(inicio, i);
@@ -253,10 +272,11 @@ function renderCalendario() {
     if (i % 7 >= 5) cls.push('finde');
     if (d === D.hoy) cls.push('hoy');
     if (d === diaSel) cls.push('sel');
+    if (apts.some(a => choque[a + '|' + d])) cls.push('conflicto');
     h += '<button class="' + cls.join(' ') + '" data-dia="' + d + '"><span class="num">' + Number(d.slice(8)) + '</span>';
     apts.forEach(a => {
       const r = ocup[a][d];
-      h += '<span class="carril">' + (r ? '<i class="barra ' + clase(r) + (r.entrada === d ? ' ini' : '') + (sumar(d, 1) === r.salida ? ' fin' : '') + '"></i>' : '') + '</span>';
+      h += '<span class="carril">' + (r ? '<i class="barra ' + clase(r) + (r.entrada === d && !r.dudoso ? ' ini' : '') + (sumar(d, 1) === r.salida ? ' fin' : '') + '"></i>' : '') + '</span>';
     });
     h += '</button>';
   }
@@ -269,7 +289,8 @@ function renderCalendario() {
     const sale = D.reservas.find(x => x.apt === a && x.salida === diaSel);
     h += '<div class="dfila"><div class="dapt">' + esc(a) + '</div>';
     if (sale && (!r || r.id !== sale.id)) h += miniTarjeta(sale, 'Sale');
-    if (r) h += miniTarjeta(r, r.entrada === diaSel ? 'Entra' : 'Ocupado');
+    if (choque[a + '|' + diaSel]) h += '<div class="alerta-txt" style="color:var(--bad)">🚨 Doble reserva esta noche</div>';
+    if (r) h += miniTarjeta(r, r.entrada === diaSel && !r.dudoso ? 'Entra' : 'Ocupado');
     if (!r) h += '<div class="libre" style="margin-top:4px">Libre esta noche</div>';
     h += '</div>';
   });
@@ -291,15 +312,18 @@ function abrirReserva(id) {
   let h = '<div class="hoja-top ' + clase(r) + '"><span class="pill">' + esc(etiqueta(r)) + '</span><span class="apt">' + esc(r.apt) + '</span></div>' +
     '<h2>' + esc(fCorta(r.entrada)) + ' → ' + esc(fCorta(r.salida)) + '</h2>' +
     '<div class="detalle" style="margin-top:12px">' +
-    '<div class="dato"><span>Entrada</span><b>' + esc(fLarga(r.entrada)) + '</b></div>' +
+    (r.dudoso && r.entrada <= D.hoy
+      ? '<div class="dato"><span>Entrada</span><b>' + esc(fLarga(r.entrada)) + ' o antes</b></div>'
+      : '<div class="dato"><span>Entrada</span><b>' + esc(fLarga(r.entrada)) + '</b></div>') +
     '<div class="dato"><span>Salida</span><b>' + esc(fLarga(r.salida)) + '</b></div>' +
-    '<div class="dato"><span>Noches</span><b>' + n + '</b></div>' +
+    '<div class="dato"><span>Noches</span><b>' + (r.dudoso ? 'al menos ' + n : n) + '</b></div>' +
     '<div class="dato"><span>Plataforma</span><b>' + esc(r.plat) + '</b></div>' +
     (r.nombre ? '<div class="dato"><span>Huésped</span><b>' + esc(r.nombre) + '</b></div>' : '') +
     (r.tel4 ? '<div class="dato"><span>Teléfono</span><b>acaba en ' + esc(r.tel4) + '</b></div>' : '') +
     (r.codigo ? '<div class="dato"><span>Código</span><b>' + esc(r.codigo) + '</b></div>' : '') +
     '</div>';
   if (enChoque(r.id)) h += '<div class="aviso" style="margin-top:12px"><b>⚠️ Se solapa con otra reserva</b>Revísalo en las plataformas.</div>';
+  if (r.dudoso) h += '<div class="hint">' + esc(r.plat) + ' no enseña las noches que ya han pasado, y la app vio esta reserva por primera vez cuando ya estaba empezada: puede que entrara antes. Las fechas exactas están en ' + esc(r.plat) + '.</div>';
   if (r.plat === 'Booking') h += '<div class="hint">Booking no comparte el nombre del huésped por calendario: los datos están en la app de Booking.</div>';
   h += '<div class="acciones">' + (r.enlace ? '<a class="btn" target="_blank" rel="noopener" href="' + esc(r.enlace) + '">Ver en ' + esc(r.plat) + '</a>' : '') + '<button class="btn prim" id="f-cerrar">Cerrar</button></div>';
   abrirHoja(h);
