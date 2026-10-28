@@ -394,13 +394,15 @@ function renderOcupacion() {
   if (!mesOc) mesOc = D.hoy.slice(0, 7);
   const p = mesOc.split('-').map(Number);
   const primero = mesOc + '-01', dias = new Date(Date.UTC(p[0], p[1], 0)).getUTCDate();
-  const desdeDatos = sumar(D.hoy, -45);   // antes de esto la app ya no guarda reservas
+  // La app solo sabe lo ocupado desde que lee todos los calendarios del apartamento
+  const desdeDe = a => { const x = (D.datosDesde || {})[a] || D.hoy; const lim = sumar(D.hoy, -400); return x > lim ? x : lim; };
   const apts = filtro === 'todos' ? D.apartamentos : [filtro];
   let h = '<div class="mes"><button class="icon-btn" data-mesoc="-1" aria-label="Mes anterior"><svg viewBox="0 0 24 24" fill="none" stroke-width="2.2" stroke-linecap="round"><path d="M15 5l-7 7 7 7"/></svg></button>' +
     '<h2>' + MES_L[p[1] - 1] + ' ' + p[0] + '</h2>' +
     '<button class="icon-btn" data-mesoc="1" aria-label="Mes siguiente"><svg viewBox="0 0 24 24" fill="none" stroke-width="2.2" stroke-linecap="round"><path d="M9 5l7 7-7 7"/></svg></button></div>';
   const tot = { ocup: 0, total: 0 };
   apts.forEach(a => {
+    const desdeDatos = desdeDe(a);
     const porPlat = {}, reservasPlat = {};
     let ocup = 0, bloq = 0, sinDatos = 0;
     for (let i = 0; i < dias; i++) {
@@ -411,12 +413,18 @@ function renderOcupacion() {
       if (real) { ocup++; porPlat[real.plat] = (porPlat[real.plat] || 0) + 1; }
       else if (aqui.length) bloq++;
     }
-    D.reservas.forEach(r => { if (r.apt === a && r.tipo !== 'Bloqueo' && r.entrada < sumar(primero, dias) && r.salida > primero) reservasPlat[r.plat] = (reservasPlat[r.plat] || 0) + 1; });
+    const iniCuenta = desdeDatos > primero ? desdeDatos : primero;
+    D.reservas.forEach(r => { if (r.apt === a && r.tipo !== 'Bloqueo' && r.entrada < sumar(primero, dias) && r.salida > iniCuenta) reservasPlat[r.plat] = (reservasPlat[r.plat] || 0) + 1; });
     const base = dias - sinDatos, libres = base - ocup - bloq;
     const pct = base ? Math.round(ocup * 100 / base) : 0;
     tot.ocup += ocup; tot.total += base;
-    h += '<div class="detalle ocup"><div class="ocup-top"><h3>' + esc(a) + '</h3><span class="pct">' + (base ? pct + '%' : '—') + '</span></div>' +
-      '<div class="hint" style="margin:0 0 8px">' + ocup + ' de ' + base + ' noches ocupadas' + (sinDatos ? ' (sin datos de los primeros ' + sinDatos + ' días)' : '') + '</div>' +
+    if (!base) {
+      h += '<div class="detalle ocup"><div class="ocup-top"><h3>' + esc(a) + '</h3><span class="pct">—</span></div>' +
+        '<div class="hint" style="margin:0">Sin datos de este mes: la app empezó a leer los calendarios el ' + esc(fDia(desdeDatos)) + '.</div></div>';
+      return;
+    }
+    h += '<div class="detalle ocup"><div class="ocup-top"><h3>' + esc(a) + '</h3><span class="pct">' + pct + '%</span></div>' +
+      '<div class="hint" style="margin:0 0 8px">' + ocup + ' de ' + base + ' noches ocupadas' + (sinDatos ? ' · <b>solo desde el ' + esc(fDia(desdeDatos)) + '</b>, cuando la app empezó a leer los calendarios (lo anterior no lo puede saber)' : '') + '</div>' +
       '<div class="barra-ocup">' + PLATS.concat(['Otra']).filter(x => porPlat[x]).map(x => '<i class="p-' + x + '" style="width:' + (porPlat[x] * 100 / (base || 1)) + '%"></i>').join('') +
       (bloq ? '<i class="p-Bloqueo" style="width:' + (bloq * 100 / (base || 1)) + '%"></i>' : '') + '</div>' +
       Object.keys(porPlat).map(x => '<div class="dato ' + (PLATS.indexOf(x) >= 0 ? 'p-' + x : 'p-Otra') + '"><span><i class="punto"></i>' + esc(x) + '</span><b>' + nTxt(porPlat[x]) + ' · ' + reservasPlat[x] + (reservasPlat[x] === 1 ? ' reserva' : ' reservas') + '</b></div>').join('') +
