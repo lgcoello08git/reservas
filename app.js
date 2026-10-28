@@ -57,6 +57,17 @@ function noches(a, b) { const x = a.split('-').map(Number), y = b.split('-').map
 function dow(ymd) { const p = ymd.split('-').map(Number); return new Date(Date.UTC(p[0], p[1] - 1, p[2])).getUTCDay(); }
 function fCorta(ymd) { const p = ymd.split('-').map(Number); return DSEM[dow(ymd)] + ' ' + p[2] + ' ' + MES[p[1] - 1]; }
 function fLarga(ymd) { const p = ymd.split('-').map(Number); return DSEM_L[dow(ymd)] + ' ' + p[2] + ' de ' + MES_L[p[1] - 1]; }
+function fDia(ymd) { const p = ymd.split('-').map(Number); return p[2] + ' ' + MES[p[1] - 1]; }
+/* En pantallas estrechas, si el nombre del apartamento no cabe en la primera línea se usa el corto */
+const NOMBRES_CORTOS = { 'Vistas a la Catedral': 'Catedral', 'Patio Toledano': 'Patio' };
+function nombreCorto(apt) { return NOMBRES_CORTOS[apt] || apt; }
+function ajustarNombres() {
+  document.querySelectorAll('.card .apt[data-corto]').forEach(a => {
+    if (a.scrollWidth > a.clientWidth + 1 && a.dataset.corto !== a.textContent) a.textContent = a.dataset.corto;
+  });
+}
+let anchoAntes = window.innerWidth;
+window.addEventListener('resize', () => { if (window.innerWidth !== anchoAntes) { anchoAntes = window.innerWidth; if (D && SES) render(); } });
 function nTxt(n) { return n + (n === 1 ? ' noche' : ' noches'); }
 function hoyLocal() { const d = new Date(); return d.getFullYear() + '-' + String(d.getMonth() + 1).padStart(2, '0') + '-' + String(d.getDate()).padStart(2, '0'); }
 function esc(s) { return String(s == null ? '' : s).replace(/[&<>"']/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c])); }
@@ -202,18 +213,18 @@ function tarjeta(r) {
   const hoy = D.hoy, man = sumar(hoy, 1);
   let tag = '';
   const dud = r.dudoso && r.entrada <= hoy;   // la plataforma no enseña cuándo entró
-  if (dud) tag = r.salida === hoy ? 'Sale hoy' : r.salida === man ? 'Sale mañana' : 'Sale ' + fCorta(r.salida);
+  if (dud) tag = r.salida === hoy ? 'Sale hoy' : r.salida === man ? 'Sale mañana' : 'Sale ' + fDia(r.salida);
   else if (r.entrada === hoy) tag = 'Entra hoy';
   else if (r.salida === hoy) tag = 'Sale hoy';
   else if (r.entrada === man) tag = 'Entra mañana';
   else if (r.salida === man) tag = 'Sale mañana';
-  else if (r.entrada < hoy && r.salida > hoy) tag = 'Sale ' + fCorta(r.salida);
+  else if (r.entrada < hoy && r.salida > hoy) tag = 'Sale ' + fDia(r.salida);
   else { const n = noches(hoy, r.entrada); if (n <= 30) tag = 'En ' + n + ' días'; }
   const datos = [];
   if (r.nombre) datos.push(esc(r.nombre));
   if (r.tel4) datos.push('📞 …' + esc(r.tel4));
   return '<button class="card ' + clase(r) + (enChoque(r.id) ? ' choque' : '') + '" data-id="' + esc(r.id) + '">' +
-    '<div class="card-top"><span class="pill">' + esc(etiqueta(r)) + '</span><span class="apt">' + esc(r.apt) + '</span>' +
+    '<div class="card-top"><span class="pill">' + esc(r.tipo === 'Bloqueo' ? '🔒 ' + r.plat : r.plat) + '</span><span class="apt" data-corto="' + esc(nombreCorto(r.apt)) + '">' + esc(r.apt) + '</span>' +
     ((r.nueva || tag) ? '<span class="tags">' + (r.nueva ? '<span class="tag nueva">Nueva</span>' : '') + (tag ? '<span class="tag">' + esc(tag) + '</span>' : '') + '</span>' : '') + '</div>' +
     (dud ? '<div class="fechas">Hasta ' + esc(fCorta(r.salida)) + ' <span class="n">· entró hoy o antes</span></div>'
       : '<div class="fechas">' + esc(fCorta(r.entrada)) + ' → ' + esc(fCorta(r.salida)) + ' <span class="n">· ' + nTxt(noches(r.entrada, r.salida)) + '</span></div>') +
@@ -236,6 +247,7 @@ function renderProximas() {
   let h = '';
   grupos.forEach(g => { if (g[1].length) h += '<div class="grupo">' + g[0] + '</div>' + g[1].map(tarjeta).join(''); });
   $('#vista').innerHTML = h || '<div class="vacio-lista"><b>No hay reservas próximas</b>Cuando entre una en Booking, Airbnb o Vrbo aparecerá aquí.</div>';
+  ajustarNombres();
 }
 
 function renderCalendario() {

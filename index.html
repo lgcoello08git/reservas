@@ -88,7 +88,19 @@ a{color:var(--accent)}
 .tag{margin-left:auto;font-size:13px;font-weight:700;color:var(--accent);background:var(--accent-soft);padding:3px 9px;border-radius:999px}
 .tag.nueva{color:var(--ok);background:transparent;border:1px solid currentColor}
 .tags{display:flex;gap:6px;margin-left:auto;flex:none}
-.tags .tag{margin-left:0}
+.tags .tag{margin-left:0;white-space:nowrap}
+/* Tarjetas: todo en la primera línea; en pantallas estrechas, letra algo menor y el nombre se recorta si no cabe */
+.card .card-top{flex-wrap:nowrap}
+.card .card-top .pill{flex:none;white-space:nowrap}
+.card .card-top .apt{flex:1 1 auto;min-width:0;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+@media (max-width:520px){
+  .card{padding:12px 12px;border-left-width:5px}
+  .card .card-top{gap:6px}
+  .card .card-top .pill{font-size:12px;padding:2px 7px}
+  .card .card-top .apt{font-size:15px}
+  .tags{gap:4px}
+  .tags .tag{font-size:12px;padding:2px 7px}
+}
 .fechas{font-size:19px;font-weight:650;margin:8px 0 2px}
 .fechas .n{font-weight:400;color:var(--muted);font-size:16px}
 .quien{font-size:15px;color:var(--ink)}
@@ -214,6 +226,6 @@ label.campo{display:block;margin:12px 0 0;font-size:14px;font-weight:600;color:v
 <div class="velo" id="velo" hidden><div class="hoja" id="hoja" role="dialog" aria-modal="true"></div></div>
 <div class="toast" id="toast"></div>
 
-<script src="app.js"></script>
+<script src="app.js?v=8"></script>
 </body>
 </html>
