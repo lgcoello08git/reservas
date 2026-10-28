@@ -68,7 +68,7 @@ a{color:var(--accent)}
 .aviso b{display:block;margin-bottom:2px}
 
 /* Pestañas y filtros */
-.tabs{display:grid;grid-template-columns:1fr 1fr;background:var(--card);border:1px solid var(--line);border-radius:14px;padding:4px;margin:4px 0 12px}
+.tabs{display:grid;grid-template-columns:1fr 1fr 1fr;background:var(--card);border:1px solid var(--line);border-radius:14px;padding:4px;margin:4px 0 12px}
 .tabs button{border:0;background:transparent;border-radius:10px;padding:11px 8px;font-weight:600;cursor:pointer;color:var(--muted)}
 .tabs button.on{background:var(--accent);color:var(--accent-ink)}
 .chips{display:flex;gap:8px;overflow-x:auto;padding:0 0 12px;scrollbar-width:none}
@@ -201,6 +201,15 @@ label.campo{display:block;margin:12px 0 0;font-size:14px;font-weight:600;color:v
 .cal-fila .est{font-size:13px;color:var(--muted);margin-top:6px}
 .cal-fila .est.ok{color:var(--ok)} .cal-fila .est.mal{color:var(--bad)}
 .menu-lista{display:flex;flex-direction:column;gap:10px;margin-top:10px}
+@media (max-width:400px){.tabs button{font-size:15px;padding:11px 4px}}
+.btn.grabando{background:var(--bad-bg);border-color:var(--bad);color:var(--bad)}
+.ocup{margin:0 0 12px}
+.ocup-top{display:flex;align-items:baseline;justify-content:space-between;gap:8px}
+.ocup-top h3{margin:0}
+.pct{font-size:28px;font-weight:800;color:var(--accent)}
+.barra-ocup{display:flex;height:14px;border-radius:7px;overflow:hidden;background:var(--line);margin:0 0 6px}
+.barra-ocup i{display:block;height:100%;background:var(--pc)}
+.punto{display:inline-block;width:10px;height:10px;border-radius:3px;background:var(--pc);margin-right:6px}
 </style>
 </head>
 <body>
@@ -219,6 +228,7 @@ label.campo{display:block;margin:12px 0 0;font-size:14px;font-weight:600;color:v
   <nav class="tabs" role="tablist" id="pestanas" hidden>
     <button data-tab="proximas" class="on" role="tab">Próximas</button>
     <button data-tab="calendario" role="tab">Calendario</button>
+    <button data-tab="ocupacion" role="tab">Ocupación</button>
   </nav>
   <div class="chips" id="chips"></div>
   <main id="vista"><div class="cargando">Cargando…</div></main>
@@ -226,6 +236,6 @@ label.campo{display:block;margin:12px 0 0;font-size:14px;font-weight:600;color:v
 <div class="velo" id="velo" hidden><div class="hoja" id="hoja" role="dialog" aria-modal="true"></div></div>
 <div class="toast" id="toast"></div>
 
-<script src="app.js?v=8"></script>
+<script src="app.js?v=9"></script>
 </body>
 </html>

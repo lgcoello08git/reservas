@@ -6,7 +6,7 @@ const DSEM_L = ['domingo', 'lunes', 'martes', 'miércoles', 'jueves', 'viernes',
 const MES = ['ene', 'feb', 'mar', 'abr', 'may', 'jun', 'jul', 'ago', 'sep', 'oct', 'nov', 'dic'];
 const MES_L = ['enero', 'febrero', 'marzo', 'abril', 'mayo', 'junio', 'julio', 'agosto', 'septiembre', 'octubre', 'noviembre', 'diciembre'];
 
-let D = null, tab = 'proximas', filtro = 'todos', mes = null, diaSel = null, ocupado = false, sinConexion = false;
+let D = null, tab = 'proximas', filtro = 'todos', mes = null, mesOc = null, diaSel = null, ocupado = false, sinConexion = false;
 const $ = s => document.querySelector(s);
 
 /* ---------- Almacén local (puede fallar en modo privado) ---------- */
@@ -183,7 +183,7 @@ function render() {
   const ch = ['todos'].concat(D.apartamentos);
   if (ch.indexOf(filtro) < 0) filtro = 'todos';
   $('#chips').innerHTML = ch.map(a => '<button class="chip' + (a === filtro ? ' on' : '') + '" data-filtro="' + esc(a) + '">' + (a === 'todos' ? 'Los dos' : esc(a)) + '</button>').join('');
-  if (tab === 'proximas') renderProximas(); else renderCalendario();
+  if (tab === 'proximas') renderProximas(); else if (tab === 'ocupacion') renderOcupacion(); else renderCalendario();
 }
 
 function renderAvisos() {
@@ -229,6 +229,7 @@ function tarjeta(r) {
     (dud ? '<div class="fechas">Hasta ' + esc(fCorta(r.salida)) + ' <span class="n">· entró hoy o antes</span></div>'
       : '<div class="fechas">' + esc(fCorta(r.entrada)) + ' → ' + esc(fCorta(r.salida)) + ' <span class="n">· ' + nTxt(noches(r.entrada, r.salida)) + '</span></div>') +
     (datos.length ? '<div class="quien">' + datos.join(' · ') + '</div>' : '') +
+    (r.notas ? '<div class="nota">📝 ' + esc(r.notas) + '</div>' : '') +
     (enChoque(r.id) ? '<div class="alerta-txt" style="color:var(--bad)">🚨 Doble reserva: coincide con otra</div>' : '') +
     '</button>';
 }
@@ -337,9 +338,94 @@ function abrirReserva(id) {
   if (enChoque(r.id)) h += '<div class="aviso" style="margin-top:12px"><b>⚠️ Se solapa con otra reserva</b>Revísalo en las plataformas.</div>';
   if (r.dudoso) h += '<div class="hint">' + esc(r.plat) + ' no enseña las noches que ya han pasado, y la app vio esta reserva por primera vez cuando ya estaba empezada: puede que entrara antes. Las fechas exactas están en ' + esc(r.plat) + '.</div>';
   if (r.plat === 'Booking') h += '<div class="hint">Booking no comparte el nombre del huésped por calendario: los datos están en la app de Booking.</div>';
+  // Nota privada: se guarda en el motor, nunca en la plataforma
+  const quien = r.notaPor ? (r.notaPor === SES.email ? 'ti' : r.notaPor) : '';
+  h += '<label class="campo">📝 Nota privada (solo la veis vosotros)<textarea id="n-texto" maxlength="1000" placeholder="Ej.: llegan a las 23h, traen cuna, ya pagado…">' + esc(r.notas || '') + '</textarea></label>' +
+    (r.notaFecha ? '<div class="hint">Escrita por ' + esc(quien) + ' el ' + esc(r.notaFecha.slice(8, 10) + '/' + r.notaFecha.slice(5, 7) + ' a las ' + r.notaFecha.slice(11, 16)) + '</div>' : '') +
+    '<div class="enlaces">' + (SR ? '<button class="btn" id="n-dictar">🎤 Dictar</button>' : '') + '<button class="btn" id="n-guardar">Guardar nota</button></div>' +
+    (SR ? '' : '<div class="hint">Para dictar, toca el micrófono del teclado.</div>') +
+    '<div class="msg" id="n-msg"></div>';
   h += '<div class="acciones">' + (r.enlace ? '<a class="btn" target="_blank" rel="noopener" href="' + esc(r.enlace) + '">Ver en ' + esc(r.plat) + '</a>' : '') + '<button class="btn prim" id="f-cerrar">Cerrar</button></div>';
   abrirHoja(h);
-  $('#f-cerrar').onclick = cerrarHoja;
+  const ta = $('#n-texto'), original = r.notas || '';
+  const guardarNota = async () => {
+    pararDictado();
+    const b = $('#n-guardar'); b.disabled = true; b.textContent = 'Guardando…';
+    try { D = await api('nota', { id: r.id, texto: ta.value }); guardar('nv-datos', D); render(); toast(ta.value.trim() ? 'Nota guardada' : 'Nota borrada'); abrirReserva(r.id); }
+    catch (e) { $('#n-msg').innerHTML = '<div class="aviso mal">' + esc(msgError(e)) + '</div>'; b.disabled = false; b.textContent = 'Guardar nota'; }
+  };
+  $('#n-guardar').onclick = guardarNota;
+  if (SR) $('#n-dictar').onclick = () => dictar(ta, $('#n-dictar'));
+  $('#f-cerrar').onclick = () => {
+    pararDictado();
+    if (ta.value.trim() !== original.trim()) {
+      const b = $('#f-cerrar');
+      if (!b.dataset.seguro) { b.dataset.seguro = '1'; b.textContent = 'Cerrar sin guardar la nota'; $('#n-msg').innerHTML = '<div class="aviso">Has cambiado la nota y no la has guardado.</div>'; return; }
+    }
+    cerrarHoja();
+  };
+}
+
+/* ---------- Dictado por voz (lo transcribe el propio móvil) ---------- */
+const SR = window.SpeechRecognition || window.webkitSpeechRecognition || null;
+let rec = null;
+function pararDictado() { if (rec) { try { rec.stop(); } catch (e) { /* nada */ } } }
+function dictar(ta, btn) {
+  if (rec) { pararDictado(); return; }
+  const base = ta.value.trim() ? ta.value.trim() + ' ' : '';
+  let r;
+  try { r = new SR(); } catch (e) { toast('Este móvil no permite dictar aquí: usa el micrófono del teclado'); return; }
+  rec = r;
+  r.lang = 'es-ES'; r.continuous = true; r.interimResults = true;
+  r.onresult = e => {
+    let fin = '', prov = '';
+    for (let i = 0; i < e.results.length; i++) { const t = e.results[i][0].transcript; if (e.results[i].isFinal) fin += t; else prov += t; }
+    let txt = (fin + prov).replace(/\s+/g, ' ').trim();
+    if (txt && !base) txt = txt.charAt(0).toUpperCase() + txt.slice(1);
+    ta.value = (base + txt).slice(0, 1000);
+  };
+  r.onerror = e => { if (e.error === 'not-allowed' || e.error === 'service-not-allowed') toast('Sin permiso para el micrófono: actívalo en los ajustes del móvil'); else if (e.error !== 'no-speech' && e.error !== 'aborted') toast('No se pudo dictar (' + e.error + ')'); };
+  r.onend = () => { rec = null; btn.textContent = '🎤 Dictar'; btn.classList.remove('grabando'); };
+  try { r.start(); btn.textContent = '⏹ Parar'; btn.classList.add('grabando'); } catch (e) { rec = null; toast('No se pudo empezar a dictar'); }
+}
+
+/* ---------- Ocupación del mes ---------- */
+function renderOcupacion() {
+  if (!mesOc) mesOc = D.hoy.slice(0, 7);
+  const p = mesOc.split('-').map(Number);
+  const primero = mesOc + '-01', dias = new Date(Date.UTC(p[0], p[1], 0)).getUTCDate();
+  const desdeDatos = sumar(D.hoy, -45);   // antes de esto la app ya no guarda reservas
+  const apts = filtro === 'todos' ? D.apartamentos : [filtro];
+  let h = '<div class="mes"><button class="icon-btn" data-mesoc="-1" aria-label="Mes anterior"><svg viewBox="0 0 24 24" fill="none" stroke-width="2.2" stroke-linecap="round"><path d="M15 5l-7 7 7 7"/></svg></button>' +
+    '<h2>' + MES_L[p[1] - 1] + ' ' + p[0] + '</h2>' +
+    '<button class="icon-btn" data-mesoc="1" aria-label="Mes siguiente"><svg viewBox="0 0 24 24" fill="none" stroke-width="2.2" stroke-linecap="round"><path d="M9 5l7 7-7 7"/></svg></button></div>';
+  const tot = { ocup: 0, total: 0 };
+  apts.forEach(a => {
+    const porPlat = {}, reservasPlat = {};
+    let ocup = 0, bloq = 0, sinDatos = 0;
+    for (let i = 0; i < dias; i++) {
+      const d = sumar(primero, i);
+      if (d < desdeDatos) { sinDatos++; continue; }
+      const aqui = D.reservas.filter(r => r.apt === a && r.entrada <= d && d < r.salida);
+      const real = aqui.find(r => r.tipo !== 'Bloqueo');
+      if (real) { ocup++; porPlat[real.plat] = (porPlat[real.plat] || 0) + 1; }
+      else if (aqui.length) bloq++;
+    }
+    D.reservas.forEach(r => { if (r.apt === a && r.tipo !== 'Bloqueo' && r.entrada < sumar(primero, dias) && r.salida > primero) reservasPlat[r.plat] = (reservasPlat[r.plat] || 0) + 1; });
+    const base = dias - sinDatos, libres = base - ocup - bloq;
+    const pct = base ? Math.round(ocup * 100 / base) : 0;
+    tot.ocup += ocup; tot.total += base;
+    h += '<div class="detalle ocup"><div class="ocup-top"><h3>' + esc(a) + '</h3><span class="pct">' + (base ? pct + '%' : '—') + '</span></div>' +
+      '<div class="hint" style="margin:0 0 8px">' + ocup + ' de ' + base + ' noches ocupadas' + (sinDatos ? ' (sin datos de los primeros ' + sinDatos + ' días)' : '') + '</div>' +
+      '<div class="barra-ocup">' + PLATS.concat(['Otra']).filter(x => porPlat[x]).map(x => '<i class="p-' + x + '" style="width:' + (porPlat[x] * 100 / (base || 1)) + '%"></i>').join('') +
+      (bloq ? '<i class="p-Bloqueo" style="width:' + (bloq * 100 / (base || 1)) + '%"></i>' : '') + '</div>' +
+      Object.keys(porPlat).map(x => '<div class="dato ' + (PLATS.indexOf(x) >= 0 ? 'p-' + x : 'p-Otra') + '"><span><i class="punto"></i>' + esc(x) + '</span><b>' + nTxt(porPlat[x]) + ' · ' + reservasPlat[x] + (reservasPlat[x] === 1 ? ' reserva' : ' reservas') + '</b></div>').join('') +
+      (bloq ? '<div class="dato p-Bloqueo"><span><i class="punto"></i>Bloqueadas</span><b>' + nTxt(bloq) + '</b></div>' : '') +
+      '<div class="dato"><span><i class="punto" style="background:var(--line)"></i>Libres</span><b>' + nTxt(libres) + '</b></div></div>';
+  });
+  if (apts.length > 1 && tot.total) h += '<div class="hint" style="text-align:center">Los dos apartamentos: <b>' + Math.round(tot.ocup * 100 / tot.total) + '%</b> de ocupación</div>';
+  if (mesOc >= D.hoy.slice(0, 7)) h += '<div class="hint" style="text-align:center">Cuenta lo reservado hasta hoy; puede subir con nuevas reservas.</div>';
+  $('#vista').innerHTML = h;
 }
 
 /* ---------- Menú ---------- */
@@ -398,6 +484,10 @@ const TIPOS_REG = {
   expulsado: ['✖️', 'Expulsado'],
   caducada: ['⌛', 'Sesión caducada por no usarla'],
   todas_cerradas: ['🔒', 'Se cerraron todas las sesiones'],
+  nota: ['📝', 'Escribió una nota'],
+  nota_borrada: ['📝', 'Borró una nota'],
+  calendario_mal: ['⚠️', 'Un calendario no se puede leer (aviso enviado)'],
+  calendario_ok: ['✅', 'Calendario arreglado'],
 };
 let REG = null, regFiltro = 'todos';
 function diaReg(t) {
@@ -427,7 +517,7 @@ async function abrirRegistro(recargar) {
     const dd = diaReg(x.t);
     if (dd !== dia) { if (dia) h += '</div>'; h += '<div class="grupo">' + esc(dd) + '</div><div class="detalle" style="margin-top:0;padding:4px 14px">'; dia = dd; }
     const tp = TIPOS_REG[x.k] || ['•', x.k];
-    const alerta = /fallo|bloqueado|no_autorizado|expulsado|token_invalido|sin_permiso|peticion_rara|limite|caducado$/.test(x.k);
+    const alerta = /fallo|bloqueado|no_autorizado|expulsado|token_invalido|sin_permiso|peticion_rara|limite|caducado$|calendario_mal/.test(x.k);
     h += '<div class="dato" style="align-items:flex-start"><span style="min-width:52px">' + esc(x.t.slice(11, 16)) + '</span><div style="flex:1;min-width:0">' +
       '<b' + (alerta ? ' style="color:var(--bad)"' : '') + '>' + tp[0] + ' ' + esc(tp[1]) + '</b>' +
       '<div style="font-size:14px;color:var(--muted);overflow-wrap:anywhere">' + esc(x.e || 'desconocido') + (x.d ? ' · ' + esc(x.d) : '') + '</div></div></div>';
@@ -481,6 +571,8 @@ document.addEventListener('click', e => {
   if (t.closest('.hoja') && !t.closest('[data-id]')) return;
   const tb = t.closest('.tabs button'); if (tb) { tab = tb.dataset.tab; render(); window.scrollTo(0, 0); return; }
   const ch = t.closest('[data-filtro]'); if (ch) { filtro = ch.dataset.filtro; render(); return; }
+  const mo = t.closest('[data-mesoc]');
+  if (mo) { const p = mesOc.split('-').map(Number); mesOc = new Date(Date.UTC(p[0], p[1] - 1 + Number(mo.dataset.mesoc), 1)).toISOString().slice(0, 7); render(); return; }
   const mb = t.closest('[data-mes]');
   if (mb) { const p = mes.split('-').map(Number); const d = new Date(Date.UTC(p[0], p[1] - 1 + Number(mb.dataset.mes), 1)); mes = d.toISOString().slice(0, 7); diaSel = null; render(); return; }
   const di = t.closest('[data-dia]'); if (di) { diaSel = di.dataset.dia; if (diaSel.slice(0, 7) !== mes) mes = diaSel.slice(0, 7); render(); return; }
