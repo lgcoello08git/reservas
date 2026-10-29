@@ -71,8 +71,12 @@ window.addEventListener('resize', () => { if (window.innerWidth !== anchoAntes) 
 function nTxt(n) { return n + (n === 1 ? ' noche' : ' noches'); }
 function hoyLocal() { const d = new Date(); return d.getFullYear() + '-' + String(d.getMonth() + 1).padStart(2, '0') + '-' + String(d.getDate()).padStart(2, '0'); }
 function esc(s) { return String(s == null ? '' : s).replace(/[&<>"']/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c])); }
-function clase(r) { if (r.tipo === 'Bloqueo') return 'p-Bloqueo'; return PLATS.indexOf(r.plat) >= 0 ? 'p-' + r.plat : 'p-Otra'; }
-function etiqueta(r) { return r.tipo === 'Bloqueo' ? 'Bloqueado · ' + r.plat : r.plat; }
+// Un cierre: bloqueo de la plataforma o fechas de Booking marcadas como «cerradas a mano»
+function esCierre(r) { return r.tipo === 'Bloqueo' || r.marca === 'cerrado'; }
+function clase(r) { if (esCierre(r)) return 'p-Bloqueo'; return PLATS.indexOf(r.plat) >= 0 ? 'p-' + r.plat : 'p-Otra'; }
+function etiqueta(r) { return r.marca === 'cerrado' ? 'Cerrado · ' + r.plat : r.tipo === 'Bloqueo' ? 'Bloqueado · ' + r.plat : r.plat; }
+// Booking no distingue en su calendario entre una reserva y unas fechas cerradas a mano
+function porAclarar(r) { return r.plat === 'Booking' && r.tipo !== 'Bloqueo' && !r.marca; }
 function enChoque(id) { return D.solapes.some(p => p[0] === id || p[1] === id); }
 function hace(s) {
   if (!s) return 'Aún no se ha comprobado';
@@ -224,12 +228,14 @@ function tarjeta(r) {
   if (r.nombre) datos.push(esc(r.nombre));
   if (r.tel4) datos.push('📞 …' + esc(r.tel4));
   return '<button class="card ' + clase(r) + (enChoque(r.id) ? ' choque' : '') + '" data-id="' + esc(r.id) + '">' +
-    '<div class="card-top"><span class="pill">' + esc(r.tipo === 'Bloqueo' ? '🔒 ' + r.plat : r.plat) + '</span><span class="apt" data-corto="' + esc(nombreCorto(r.apt)) + '">' + esc(r.apt) + '</span>' +
+    '<div class="card-top"><span class="pill">' + esc(esCierre(r) ? '🔒 ' + r.plat : r.plat) + '</span><span class="apt" data-corto="' + esc(nombreCorto(r.apt)) + '">' + esc(r.apt) + '</span>' +
     ((r.nueva || tag) ? '<span class="tags">' + (r.nueva ? '<span class="tag nueva">Nueva</span>' : '') + (tag ? '<span class="tag">' + esc(tag) + '</span>' : '') + '</span>' : '') + '</div>' +
     (dud ? '<div class="fechas">Hasta ' + esc(fCorta(r.salida)) + ' <span class="n">· entró hoy o antes</span></div>'
       : '<div class="fechas">' + esc(fCorta(r.entrada)) + ' → ' + esc(fCorta(r.salida)) + ' <span class="n">· ' + nTxt(noches(r.entrada, r.salida)) + '</span></div>') +
     (datos.length ? '<div class="quien">' + datos.join(' · ') + '</div>' : '') +
     (r.notas ? '<div class="nota">📝 ' + esc(r.notas) + '</div>' : '') +
+    (porAclarar(r) && r.salida > hoy ? '<div class="quien vacio" style="font-size:13px">¿Reserva o fechas cerradas a mano? Tócala para aclararlo</div>' : '') +
+    (r.marca === 'cerrado' ? '<div class="quien vacio" style="font-size:13px">Fechas cerradas a mano (no es reserva)</div>' : '') +
     (enChoque(r.id) ? '<div class="alerta-txt" style="color:var(--bad)">🚨 Doble reserva: coincide con otra</div>' : '') +
     '</button>';
 }
@@ -312,7 +318,7 @@ function renderCalendario() {
 }
 
 function miniTarjeta(r, txt) {
-  const q = r.tipo === 'Bloqueo' ? 'Fechas cerradas' : (r.nombre || 'Reserva');
+  const q = esCierre(r) ? 'Fechas cerradas' : (r.nombre || 'Reserva');
   return '<button class="mini ' + clase(r) + '" data-id="' + esc(r.id) + '"><span class="pill">' + esc(etiqueta(r)) + '</span>' +
     '<span class="q">' + esc(q) + '<small>' + esc(txt) + ' · ' + esc(fCorta(r.entrada)) + ' → ' + esc(fCorta(r.salida)) + '</small></span></button>';
 }
@@ -337,6 +343,14 @@ function abrirReserva(id) {
     '</div>';
   if (enChoque(r.id)) h += '<div class="aviso" style="margin-top:12px"><b>⚠️ Se solapa con otra reserva</b>Revísalo en las plataformas.</div>';
   if (r.dudoso) h += '<div class="hint">' + esc(r.plat) + ' no enseña las noches que ya han pasado, y la app vio esta reserva por primera vez cuando ya estaba empezada: puede que entrara antes. Las fechas exactas están en ' + esc(r.plat) + '.</div>';
+  if (r.plat === 'Booking' && r.tipo !== 'Bloqueo') {
+    const quienM = r.marcaPor ? (r.marcaPor === SES.email ? 'ti' : r.marcaPor) : '';
+    h += '<div class="detalle" style="margin-top:12px"><h3>¿Qué es esto?</h3>' +
+      '<div class="hint" style="margin-top:0">El calendario de Booking marca igual una reserva y unas fechas cerradas a mano. Aclara qué es y la app lo recordará.</div>' +
+      '<div class="seg"><button class="' + (r.marca === 'reserva' ? 'on' : '') + '" data-marca="reserva">✅ Es una reserva</button><button class="' + (r.marca === 'cerrado' ? 'on' : '') + '" data-marca="cerrado">🔒 Lo cerré yo</button></div>' +
+      (r.marca ? '<div class="hint">Marcado por ' + esc(quienM) + '. Toca otra vez para quitarlo.</div>' : '') +
+      '<div class="msg" id="m-marca"></div></div>';
+  }
   if (r.plat === 'Booking') h += '<div class="hint">Booking no comparte el nombre del huésped por calendario: los datos están en la app de Booking.</div>';
   // Nota privada: se guarda en el motor, nunca en la plataforma
   const quien = r.notaPor ? (r.notaPor === SES.email ? 'ti' : r.notaPor) : '';
@@ -355,6 +369,14 @@ function abrirReserva(id) {
     catch (e) { $('#n-msg').innerHTML = '<div class="aviso mal">' + esc(msgError(e)) + '</div>'; b.disabled = false; b.textContent = 'Guardar nota'; }
   };
   $('#n-guardar').onclick = guardarNota;
+  document.querySelectorAll('[data-marca]').forEach(b => {
+    b.onclick = async () => {
+      const marca = r.marca === b.dataset.marca ? '' : b.dataset.marca;
+      document.querySelectorAll('[data-marca]').forEach(x => { x.disabled = true; });
+      try { D = await api('marcar', { id: r.id, marca }); guardar('nv-datos', D); render(); toast(marca === 'cerrado' ? 'Marcado: fechas cerradas a mano' : marca === 'reserva' ? 'Marcado: es una reserva' : 'Marca quitada'); abrirReserva(r.id); }
+      catch (e) { $('#m-marca').innerHTML = '<div class="aviso mal">' + esc(msgError(e)) + '</div>'; document.querySelectorAll('[data-marca]').forEach(x => { x.disabled = false; }); }
+    };
+  });
   if (SR) $('#n-dictar').onclick = () => dictar(ta, $('#n-dictar'));
   $('#f-cerrar').onclick = () => {
     pararDictado();
@@ -391,11 +413,11 @@ function dictar(ta, btn) {
 
 /* ---------- Ocupación del mes ---------- */
 function renderOcupacion() {
-  if (!mesOc) mesOc = D.hoy.slice(0, 7);
+  // La ocupación se cuenta desde que los datos son fiables (lo marca el motor por apartamento)
+  const desdeDe = a => { const x = (D.datosDesde || {})[a] || D.hoy; const lim = sumar(D.hoy, -400); return x > lim ? x : lim; };
+  if (!mesOc) { const ini = D.apartamentos.map(desdeDe).sort()[0] || D.hoy; mesOc = (ini > D.hoy ? ini : D.hoy).slice(0, 7); }
   const p = mesOc.split('-').map(Number);
   const primero = mesOc + '-01', dias = new Date(Date.UTC(p[0], p[1], 0)).getUTCDate();
-  // La app solo sabe lo ocupado desde que lee todos los calendarios del apartamento
-  const desdeDe = a => { const x = (D.datosDesde || {})[a] || D.hoy; const lim = sumar(D.hoy, -400); return x > lim ? x : lim; };
   const apts = filtro === 'todos' ? D.apartamentos : [filtro];
   let h = '<div class="mes"><button class="icon-btn" data-mesoc="-1" aria-label="Mes anterior"><svg viewBox="0 0 24 24" fill="none" stroke-width="2.2" stroke-linecap="round"><path d="M15 5l-7 7 7 7"/></svg></button>' +
     '<h2>' + MES_L[p[1] - 1] + ' ' + p[0] + '</h2>' +
@@ -409,22 +431,22 @@ function renderOcupacion() {
       const d = sumar(primero, i);
       if (d < desdeDatos) { sinDatos++; continue; }
       const aqui = D.reservas.filter(r => r.apt === a && r.entrada <= d && d < r.salida);
-      const real = aqui.find(r => r.tipo !== 'Bloqueo');
+      const real = aqui.find(r => !esCierre(r));
       if (real) { ocup++; porPlat[real.plat] = (porPlat[real.plat] || 0) + 1; }
       else if (aqui.length) bloq++;
     }
     const iniCuenta = desdeDatos > primero ? desdeDatos : primero;
-    D.reservas.forEach(r => { if (r.apt === a && r.tipo !== 'Bloqueo' && r.entrada < sumar(primero, dias) && r.salida > iniCuenta) reservasPlat[r.plat] = (reservasPlat[r.plat] || 0) + 1; });
+    D.reservas.forEach(r => { if (r.apt === a && !esCierre(r) && r.entrada < sumar(primero, dias) && r.salida > iniCuenta) reservasPlat[r.plat] = (reservasPlat[r.plat] || 0) + 1; });
     const base = dias - sinDatos, libres = base - ocup - bloq;
     const pct = base ? Math.round(ocup * 100 / base) : 0;
     tot.ocup += ocup; tot.total += base;
     if (!base) {
       h += '<div class="detalle ocup"><div class="ocup-top"><h3>' + esc(a) + '</h3><span class="pct">—</span></div>' +
-        '<div class="hint" style="margin:0">Sin datos de este mes: la app empezó a leer los calendarios el ' + esc(fDia(desdeDatos)) + '.</div></div>';
+        '<div class="hint" style="margin:0">La ocupación se cuenta desde el ' + esc(fLarga(desdeDatos).replace(/^\S+ /, '')) + '.</div></div>';
       return;
     }
     h += '<div class="detalle ocup"><div class="ocup-top"><h3>' + esc(a) + '</h3><span class="pct">' + pct + '%</span></div>' +
-      '<div class="hint" style="margin:0 0 8px">' + ocup + ' de ' + base + ' noches ocupadas' + (sinDatos ? ' · <b>solo desde el ' + esc(fDia(desdeDatos)) + '</b>, cuando la app empezó a leer los calendarios (lo anterior no lo puede saber)' : '') + '</div>' +
+      '<div class="hint" style="margin:0 0 8px">' + ocup + ' de ' + base + ' noches ocupadas' + (sinDatos ? ' · <b>contando desde el ' + esc(fDia(desdeDatos)) + '</b>' : '') + '</div>' +
       '<div class="barra-ocup">' + PLATS.concat(['Otra']).filter(x => porPlat[x]).map(x => '<i class="p-' + x + '" style="width:' + (porPlat[x] * 100 / (base || 1)) + '%"></i>').join('') +
       (bloq ? '<i class="p-Bloqueo" style="width:' + (bloq * 100 / (base || 1)) + '%"></i>' : '') + '</div>' +
       Object.keys(porPlat).map(x => '<div class="dato ' + (PLATS.indexOf(x) >= 0 ? 'p-' + x : 'p-Otra') + '"><span><i class="punto"></i>' + esc(x) + '</span><b>' + nTxt(porPlat[x]) + ' · ' + reservasPlat[x] + (reservasPlat[x] === 1 ? ' reserva' : ' reservas') + '</b></div>').join('') +
@@ -496,6 +518,9 @@ const TIPOS_REG = {
   nota_borrada: ['📝', 'Borró una nota'],
   calendario_mal: ['⚠️', 'Un calendario no se puede leer (aviso enviado)'],
   calendario_ok: ['✅', 'Calendario arreglado'],
+  marca_cerrado: ['🔒', 'Marcó unas fechas de Booking como cerradas a mano'],
+  marca_reserva: ['✅', 'Confirmó una reserva de Booking'],
+  marca_quitada: ['↩️', 'Quitó una marca de Booking'],
 };
 let REG = null, regFiltro = 'todos';
 function diaReg(t) {
