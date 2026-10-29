@@ -73,8 +73,10 @@ function hoyLocal() { const d = new Date(); return d.getFullYear() + '-' + Strin
 function esc(s) { return String(s == null ? '' : s).replace(/[&<>"']/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c])); }
 // Un cierre: bloqueo de la plataforma o fechas de Booking marcadas como «cerradas a mano»
 function esCierre(r) { return r.tipo === 'Bloqueo' || r.marca === 'cerrado'; }
-function clase(r) { if (esCierre(r)) return 'p-Bloqueo'; return PLATS.indexOf(r.plat) >= 0 ? 'p-' + r.plat : 'p-Otra'; }
-function etiqueta(r) { return r.marca === 'cerrado' ? 'Cerrado · ' + r.plat : r.tipo === 'Bloqueo' ? 'Bloqueado · ' + r.plat : r.plat; }
+function clase(r) { if (esCierre(r)) return 'p-Bloqueo'; if (r.marca === 'externa') return 'p-Directa'; return PLATS.indexOf(r.plat) >= 0 ? 'p-' + r.plat : 'p-Otra'; }
+// Canal que se muestra: una reserva externa deja de ser «Booking»
+function canal(r) { return r.marca === 'externa' ? 'Externa' : r.plat; }
+function etiqueta(r) { return r.marca === 'cerrado' ? 'Cerrado' : r.marca === 'externa' ? 'Reserva externa' : r.tipo === 'Bloqueo' ? 'Bloqueado · ' + r.plat : r.plat; }
 // Booking no distingue en su calendario entre una reserva y unas fechas cerradas a mano
 function porAclarar(r) { return r.plat === 'Booking' && r.tipo !== 'Bloqueo' && !r.marca; }
 function enChoque(id) { return D.solapes.some(p => p[0] === id || p[1] === id); }
@@ -228,7 +230,7 @@ function tarjeta(r) {
   if (r.nombre) datos.push(esc(r.nombre));
   if (r.tel4) datos.push('📞 …' + esc(r.tel4));
   return '<button class="card ' + clase(r) + (enChoque(r.id) ? ' choque' : '') + '" data-id="' + esc(r.id) + '">' +
-    '<div class="card-top"><span class="pill">' + esc(esCierre(r) ? '🔒 ' + r.plat : r.plat) + '</span><span class="apt" data-corto="' + esc(nombreCorto(r.apt)) + '">' + esc(r.apt) + '</span>' +
+    '<div class="card-top"><span class="pill">' + esc(r.marca === 'cerrado' ? '🔒 Cerrado' : r.marca === 'externa' ? 'Externa' : esCierre(r) ? '🔒 ' + r.plat : r.plat) + '</span><span class="apt" data-corto="' + esc(nombreCorto(r.apt)) + '">' + esc(r.apt) + '</span>' +
     ((r.nueva || tag) ? '<span class="tags">' + (r.nueva ? '<span class="tag nueva">Nueva</span>' : '') + (tag ? '<span class="tag">' + esc(tag) + '</span>' : '') + '</span>' : '') + '</div>' +
     (dud ? '<div class="fechas">Hasta ' + esc(fCorta(r.salida)) + ' <span class="n">· entró hoy o antes</span></div>'
       : '<div class="fechas">' + esc(fCorta(r.entrada)) + ' → ' + esc(fCorta(r.salida)) + ' <span class="n">· ' + nTxt(noches(r.entrada, r.salida)) + '</span></div>') +
@@ -272,7 +274,7 @@ function renderCalendario() {
   let h = '<div class="mes"><button class="icon-btn" data-mes="-1" aria-label="Mes anterior"><svg viewBox="0 0 24 24" fill="none" stroke-width="2.2" stroke-linecap="round"><path d="M15 5l-7 7 7 7"/></svg></button>' +
     '<h2>' + MES_L[p[1] - 1] + ' ' + p[0] + '</h2>' +
     '<button class="icon-btn" data-mes="1" aria-label="Mes siguiente"><svg viewBox="0 0 24 24" fill="none" stroke-width="2.2" stroke-linecap="round"><path d="M9 5l7 7-7 7"/></svg></button></div>';
-  h += '<div class="leyenda">' + PLATS.map(x => '<span class="p-' + x + '"><i></i>' + x + '</span>').join('') + '<span class="p-Bloqueo"><i></i>Bloqueado</span></div>';
+  h += '<div class="leyenda">' + PLATS.map(x => '<span class="p-' + x + '"><i></i>' + x + '</span>').join('') + '<span class="p-Directa"><i></i>Externa</span><span class="p-Bloqueo"><i></i>Cerrado</span></div>';
   if (apts.length > 1) h += '<div class="carriles">Cada día: ' + apts.map((a, i) => (i === 0 ? 'arriba ' : 'abajo ') + '<b>' + esc(a) + '</b>').join(' · ') + '</div>';
   // Noches con doble reserva (por apartamento)
   const choque = {};
@@ -335,7 +337,9 @@ function abrirReserva(id) {
       : '<div class="dato"><span>Entrada</span><b>' + esc(fLarga(r.entrada)) + '</b></div>') +
     '<div class="dato"><span>Salida</span><b>' + esc(fLarga(r.salida)) + '</b></div>' +
     '<div class="dato"><span>Noches</span><b>' + (r.dudoso ? 'al menos ' + n : n) + '</b></div>' +
-    '<div class="dato"><span>Plataforma</span><b>' + esc(r.plat) + '</b></div>' +
+    (r.marca === 'cerrado' ? '<div class="dato"><span>Qué es</span><b>Fechas cerradas a mano</b></div>'
+      : r.marca === 'externa' ? '<div class="dato"><span>Qué es</span><b>Reserva externa (no es de Booking)</b></div>'
+      : '<div class="dato"><span>Plataforma</span><b>' + esc(r.plat) + '</b></div>') +
     (r.nombre ? '<div class="dato"><span>Huésped</span><b>' + esc(r.nombre) + '</b></div>' : '') +
     (r.tel4 ? '<div class="dato"><span>Teléfono</span><b>acaba en ' + esc(r.tel4) + '</b></div>' : '') +
     (r.codigo ? '<div class="dato"><span>Código</span><b>' + esc(r.codigo) + '</b></div>' : '') +
@@ -345,12 +349,12 @@ function abrirReserva(id) {
   if (r.plat === 'Booking' && r.tipo !== 'Bloqueo') {
     const quienM = r.marcaPor ? (r.marcaPor === SES.email ? 'ti' : r.marcaPor) : '';
     h += '<div class="detalle" style="margin-top:12px"><h3>¿Qué es esto?</h3>' +
-      '<div class="hint" style="margin-top:0">El calendario de Booking marca igual una reserva y unas fechas cerradas a mano. La app lo trata como reserva; si estas fechas las cerraste tú, márcalo.</div>' +
-      '<div class="seg"><button class="' + (r.marca === 'reserva' ? 'on' : '') + '" data-marca="reserva">✅ Es una reserva</button><button class="' + (r.marca === 'cerrado' ? 'on' : '') + '" data-marca="cerrado">🔒 Lo cerré yo</button></div>' +
+      '<div class="hint" style="margin-top:0">El calendario de Booking marca igual una reserva y unas fechas cerradas a mano. La app lo trata como reserva de Booking; si no lo es, márcalo aquí.</div>' +
+      '<div class="seg"><button class="' + (r.marca === 'reserva' ? 'on' : '') + '" data-marca="reserva">✅ Es una reserva de Booking</button><button class="' + (r.marca === 'externa' ? 'on' : '') + '" data-marca="externa">📞 Es una reserva externa</button><button class="' + (r.marca === 'cerrado' ? 'on' : '') + '" data-marca="cerrado">🔒 Lo cerré yo</button></div>' +
       (r.marca ? '<div class="hint">Marcado por ' + esc(quienM) + '. Toca otra vez para quitarlo.</div>' : '') +
       '<div class="msg" id="m-marca"></div></div>';
   }
-  if (r.plat === 'Booking') h += '<div class="hint">Booking no comparte el nombre del huésped por calendario: los datos están en la app de Booking.</div>';
+  if (r.plat === 'Booking' && !r.marca) h += '<div class="hint">Booking no comparte el nombre del huésped por calendario: los datos están en la app de Booking.</div>';
   // Nota privada: se guarda en el motor, nunca en la plataforma
   const quien = r.notaPor ? (r.notaPor === SES.email ? 'ti' : r.notaPor) : '';
   h += '<label class="campo">📝 Nota privada (solo la veis vosotros)<textarea id="n-texto" maxlength="1000" placeholder="Ej.: llegan a las 23h, traen cuna, ya pagado…">' + esc(r.notas || '') + '</textarea></label>' +
@@ -372,7 +376,7 @@ function abrirReserva(id) {
     b.onclick = async () => {
       const marca = r.marca === b.dataset.marca ? '' : b.dataset.marca;
       document.querySelectorAll('[data-marca]').forEach(x => { x.disabled = true; });
-      try { D = await api('marcar', { id: r.id, marca }); guardar('nv-datos', D); render(); toast(marca === 'cerrado' ? 'Marcado: fechas cerradas a mano' : marca === 'reserva' ? 'Marcado: es una reserva' : 'Marca quitada'); abrirReserva(r.id); }
+      try { D = await api('marcar', { id: r.id, marca }); guardar('nv-datos', D); render(); toast(marca === 'cerrado' ? 'Marcado: fechas cerradas a mano' : marca === 'externa' ? 'Marcado: reserva externa' : marca === 'reserva' ? 'Marcado: reserva de Booking' : 'Marca quitada'); abrirReserva(r.id); }
       catch (e) { $('#m-marca').innerHTML = '<div class="aviso mal">' + esc(msgError(e)) + '</div>'; document.querySelectorAll('[data-marca]').forEach(x => { x.disabled = false; }); }
     };
   });
@@ -431,11 +435,11 @@ function renderOcupacion() {
       if (d < desdeDatos) { sinDatos++; continue; }
       const aqui = D.reservas.filter(r => r.apt === a && r.entrada <= d && d < r.salida);
       const real = aqui.find(r => !esCierre(r));
-      if (real) { ocup++; porPlat[real.plat] = (porPlat[real.plat] || 0) + 1; }
+      if (real) { ocup++; porPlat[canal(real)] = (porPlat[canal(real)] || 0) + 1; }
       else if (aqui.length) bloq++;
     }
     const iniCuenta = desdeDatos > primero ? desdeDatos : primero;
-    D.reservas.forEach(r => { if (r.apt === a && !esCierre(r) && r.entrada < sumar(primero, dias) && r.salida > iniCuenta) reservasPlat[r.plat] = (reservasPlat[r.plat] || 0) + 1; });
+    D.reservas.forEach(r => { if (r.apt === a && !esCierre(r) && r.entrada < sumar(primero, dias) && r.salida > iniCuenta) reservasPlat[canal(r)] = (reservasPlat[canal(r)] || 0) + 1; });
     const base = dias - sinDatos, libres = base - ocup - bloq;
     const pct = base ? Math.round(ocup * 100 / base) : 0;
     tot.ocup += ocup; tot.total += base;
@@ -446,9 +450,9 @@ function renderOcupacion() {
     }
     h += '<div class="detalle ocup"><div class="ocup-top"><h3>' + esc(a) + '</h3><span class="pct">' + pct + '%</span></div>' +
       '<div class="hint" style="margin:0 0 8px">' + ocup + ' de ' + base + ' noches ocupadas' + (sinDatos ? ' · <b>contando desde el ' + esc(fDia(desdeDatos)) + '</b>' : '') + '</div>' +
-      '<div class="barra-ocup">' + PLATS.concat(['Otra']).filter(x => porPlat[x]).map(x => '<i class="p-' + x + '" style="width:' + (porPlat[x] * 100 / (base || 1)) + '%"></i>').join('') +
+      '<div class="barra-ocup">' + PLATS.concat(['Externa']).filter(x => porPlat[x]).map(x => '<i class="' + (x === 'Externa' ? 'p-Directa' : 'p-' + x) + '" style="width:' + (porPlat[x] * 100 / (base || 1)) + '%"></i>').join('') +
       (bloq ? '<i class="p-Bloqueo" style="width:' + (bloq * 100 / (base || 1)) + '%"></i>' : '') + '</div>' +
-      Object.keys(porPlat).map(x => '<div class="dato ' + (PLATS.indexOf(x) >= 0 ? 'p-' + x : 'p-Otra') + '"><span><i class="punto"></i>' + esc(x) + '</span><b>' + nTxt(porPlat[x]) + ' · ' + reservasPlat[x] + (reservasPlat[x] === 1 ? ' reserva' : ' reservas') + '</b></div>').join('') +
+      Object.keys(porPlat).map(x => '<div class="dato ' + (x === 'Externa' ? 'p-Directa' : PLATS.indexOf(x) >= 0 ? 'p-' + x : 'p-Otra') + '"><span><i class="punto"></i>' + esc(x) + '</span><b>' + nTxt(porPlat[x]) + ' · ' + reservasPlat[x] + (reservasPlat[x] === 1 ? ' reserva' : ' reservas') + '</b></div>').join('') +
       (bloq ? '<div class="dato p-Bloqueo"><span><i class="punto"></i>Bloqueadas</span><b>' + nTxt(bloq) + '</b></div>' : '') +
       '<div class="dato"><span><i class="punto" style="background:var(--line)"></i>Libres</span><b>' + nTxt(libres) + '</b></div></div>';
   });
@@ -519,6 +523,7 @@ const TIPOS_REG = {
   calendario_ok: ['✅', 'Calendario arreglado'],
   marca_cerrado: ['🔒', 'Marcó unas fechas de Booking como cerradas a mano'],
   marca_reserva: ['✅', 'Confirmó una reserva de Booking'],
+  marca_externa: ['📞', 'Marcó unas fechas de Booking como reserva externa'],
   marca_quitada: ['↩️', 'Quitó una marca de Booking'],
 };
 let REG = null, regFiltro = 'todos';
