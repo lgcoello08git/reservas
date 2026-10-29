@@ -234,7 +234,6 @@ function tarjeta(r) {
       : '<div class="fechas">' + esc(fCorta(r.entrada)) + ' → ' + esc(fCorta(r.salida)) + ' <span class="n">· ' + nTxt(noches(r.entrada, r.salida)) + '</span></div>') +
     (datos.length ? '<div class="quien">' + datos.join(' · ') + '</div>' : '') +
     (r.notas ? '<div class="nota">📝 ' + esc(r.notas) + '</div>' : '') +
-    (porAclarar(r) && r.salida > hoy ? '<div class="quien vacio" style="font-size:13px">¿Reserva o fechas cerradas a mano? Tócala para aclararlo</div>' : '') +
     (r.marca === 'cerrado' ? '<div class="quien vacio" style="font-size:13px">Fechas cerradas a mano (no es reserva)</div>' : '') +
     (enChoque(r.id) ? '<div class="alerta-txt" style="color:var(--bad)">🚨 Doble reserva: coincide con otra</div>' : '') +
     '</button>';
@@ -346,7 +345,7 @@ function abrirReserva(id) {
   if (r.plat === 'Booking' && r.tipo !== 'Bloqueo') {
     const quienM = r.marcaPor ? (r.marcaPor === SES.email ? 'ti' : r.marcaPor) : '';
     h += '<div class="detalle" style="margin-top:12px"><h3>¿Qué es esto?</h3>' +
-      '<div class="hint" style="margin-top:0">El calendario de Booking marca igual una reserva y unas fechas cerradas a mano. Aclara qué es y la app lo recordará.</div>' +
+      '<div class="hint" style="margin-top:0">El calendario de Booking marca igual una reserva y unas fechas cerradas a mano. La app lo trata como reserva; si estas fechas las cerraste tú, márcalo.</div>' +
       '<div class="seg"><button class="' + (r.marca === 'reserva' ? 'on' : '') + '" data-marca="reserva">✅ Es una reserva</button><button class="' + (r.marca === 'cerrado' ? 'on' : '') + '" data-marca="cerrado">🔒 Lo cerré yo</button></div>' +
       (r.marca ? '<div class="hint">Marcado por ' + esc(quienM) + '. Toca otra vez para quitarlo.</div>' : '') +
       '<div class="msg" id="m-marca"></div></div>';
