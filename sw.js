@@ -1,6 +1,6 @@
 // Guarda la app para que abra sin conexión. Los datos (del motor) siempre se piden a la red.
-const CACHE = 'reservas-nv-v15';
-const ARCHIVOS = ['./', './index.html', './app.js?v=15', './manifest.webmanifest', './icon-192.png', './icon-512.png'];
+const CACHE = 'reservas-nv-v16';
+const ARCHIVOS = ['./', './index.html', './app.js?v=16', './manifest.webmanifest', './icon-192.png', './icon-512.png'];
 self.addEventListener('install', e => {
   e.waitUntil(caches.open(CACHE).then(c => c.addAll(ARCHIVOS)));
   self.skipWaiting();

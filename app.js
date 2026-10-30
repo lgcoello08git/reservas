@@ -352,6 +352,12 @@ function abrirReserva(id) {
       '<div class="hint" style="margin-top:0">El calendario de Booking marca igual una reserva y unas fechas cerradas a mano. La app lo trata como reserva de Booking; si no lo es, márcalo aquí.</div>' +
       '<div class="seg"><button class="' + (r.marca === 'reserva' ? 'on' : '') + '" data-marca="reserva">✅ Es una reserva de Booking</button><button class="' + (r.marca === 'externa' ? 'on' : '') + '" data-marca="externa">📞 Es una reserva externa</button><button class="' + (r.marca === 'cerrado' ? 'on' : '') + '" data-marca="cerrado">🔒 Lo cerré yo</button></div>' +
       (r.marca ? '<div class="hint">Marcado por ' + esc(quienM) + '. Toca otra vez para quitarlo.</div>' : '') +
+      (noches(r.entrada, r.salida) > 1
+        ? '<div class="hint" style="margin-top:14px"><b>¿Son dos cosas seguidas?</b> Booking junta en un bloque una reserva y unos días cerrados. Elige dónde empieza la segunda parte y sepáralas; luego marca cada una.</div>' +
+          '<div class="enlaces"><select id="s-dia" class="btn" style="flex:2 1 60%">' +
+          (() => { let o = ''; for (let dd = sumar(r.entrada, 1); dd < r.salida; dd = sumar(dd, 1)) o += '<option value="' + dd + '">Separar el ' + esc(fCorta(dd)) + '</option>'; return o; })() +
+          '</select><button class="btn" id="s-separar" style="flex:1 1 30%">Separar</button></div>'
+        : '') +
       '<div class="msg" id="m-marca"></div></div>';
   }
   if (r.plat === 'Booking' && !r.marca) h += '<div class="hint">Booking no comparte el nombre del huésped por calendario: los datos están en la app de Booking.</div>';
@@ -372,6 +378,12 @@ function abrirReserva(id) {
     catch (e) { $('#n-msg').innerHTML = '<div class="aviso mal">' + esc(msgError(e)) + '</div>'; b.disabled = false; b.textContent = 'Guardar nota'; }
   };
   $('#n-guardar').onclick = guardarNota;
+  if ($('#s-separar')) $('#s-separar').onclick = async () => {
+    const b = $('#s-separar'), dia = $('#s-dia').value;
+    b.disabled = true; b.textContent = 'Separando…';
+    try { D = await api('separar', { id: r.id, dia }); guardar('nv-datos', D); render(); toast('Separado: ahora marca cada parte'); const p1 = D.reservas.find(x => x.apt === r.apt && x.plat === r.plat && x.salida === dia && x.entrada === r.entrada); if (p1) abrirReserva(p1.id); else cerrarHoja(); }
+    catch (e) { $('#m-marca').innerHTML = '<div class="aviso mal">' + esc(msgError(e)) + '</div>'; b.disabled = false; b.textContent = 'Separar'; }
+  };
   document.querySelectorAll('[data-marca]').forEach(b => {
     b.onclick = async () => {
       const marca = r.marca === b.dataset.marca ? '' : b.dataset.marca;
@@ -524,6 +536,7 @@ const TIPOS_REG = {
   marca_cerrado: ['🔒', 'Marcó unas fechas de Booking como cerradas a mano'],
   marca_reserva: ['✅', 'Confirmó una reserva de Booking'],
   marca_externa: ['📞', 'Marcó unas fechas de Booking como reserva externa'],
+  separado: ['✂️', 'Separó un bloque de Booking en dos'],
   marca_quitada: ['↩️', 'Quitó una marca de Booking'],
 };
 let REG = null, regFiltro = 'todos';
