@@ -34,6 +34,7 @@
 .p-Airbnb{--pc:#E31C5F;--pc-soft:#FDE9F0}
 .p-Vrbo{--pc:#6D3FC0;--pc-soft:#F0EAFA}
 .p-Directa{--pc:#1A7F4B;--pc-soft:#E5F4EC}
+.p-Smartbox{--pc:#B45309;--pc-soft:#FDF0E1}
 .p-Bloqueo{--pc:#6B7280;--pc-soft:#EEF0F2}
 .p-Otra{--pc:#8A6D3B;--pc-soft:#F5EEE2}
 @media (prefers-color-scheme: dark){
@@ -41,6 +42,7 @@
   .p-Airbnb{--pc:#FF6B8E;--pc-soft:#3A1622}
   .p-Vrbo{--pc:#A98AF2;--pc-soft:#261C3B}
   .p-Directa{--pc:#4CC98A;--pc-soft:#132B1F}
+  .p-Smartbox{--pc:#F0A04B;--pc-soft:#33240F}
   .p-Bloqueo{--pc:#A1A7B3;--pc-soft:#24262B}
   .p-Otra{--pc:#D3B07A;--pc-soft:#2E261A}
 }
@@ -68,7 +70,7 @@ a{color:var(--accent)}
 .aviso b{display:block;margin-bottom:2px}
 
 /* Pestañas y filtros */
-.tabs{display:grid;grid-template-columns:1fr 1fr 1fr;background:var(--card);border:1px solid var(--line);border-radius:14px;padding:4px;margin:4px 0 12px}
+.tabs{display:grid;grid-template-columns:repeat(4,1fr);background:var(--card);border:1px solid var(--line);border-radius:14px;padding:4px;margin:4px 0 12px}
 .tabs button{border:0;background:transparent;border-radius:10px;padding:11px 8px;font-weight:600;cursor:pointer;color:var(--muted)}
 .tabs button.on{background:var(--accent);color:var(--accent-ink)}
 .chips{display:flex;gap:8px;overflow-x:auto;padding:0 0 12px;scrollbar-width:none}
@@ -201,7 +203,7 @@ label.campo{display:block;margin:12px 0 0;font-size:14px;font-weight:600;color:v
 .cal-fila .est{font-size:13px;color:var(--muted);margin-top:6px}
 .cal-fila .est.ok{color:var(--ok)} .cal-fila .est.mal{color:var(--bad)}
 .menu-lista{display:flex;flex-direction:column;gap:10px;margin-top:10px}
-@media (max-width:400px){.tabs button{font-size:15px;padding:11px 4px}}
+@media (max-width:400px){.tabs button{font-size:14px;padding:11px 2px}}
 .btn.grabando{background:var(--bad-bg);border-color:var(--bad);color:var(--bad)}
 .ocup{margin:0 0 12px}
 .ocup-top{display:flex;align-items:baseline;justify-content:space-between;gap:8px}
@@ -229,6 +231,7 @@ label.campo{display:block;margin:12px 0 0;font-size:14px;font-weight:600;color:v
     <button data-tab="proximas" class="on" role="tab">Próximas</button>
     <button data-tab="calendario" role="tab">Calendario</button>
     <button data-tab="ocupacion" role="tab">Ocupación</button>
+    <button data-tab="facturas" role="tab">Facturas</button>
   </nav>
   <div class="chips" id="chips"></div>
   <main id="vista"><div class="cargando">Cargando…</div></main>
@@ -236,6 +239,6 @@ label.campo{display:block;margin:12px 0 0;font-size:14px;font-weight:600;color:v
 <div class="velo" id="velo" hidden><div class="hoja" id="hoja" role="dialog" aria-modal="true"></div></div>
 <div class="toast" id="toast"></div>
 
-<script src="app.js?v=16"></script>
+<script src="app.js?v=17"></script>
 </body>
 </html>

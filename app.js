@@ -73,10 +73,11 @@ function hoyLocal() { const d = new Date(); return d.getFullYear() + '-' + Strin
 function esc(s) { return String(s == null ? '' : s).replace(/[&<>"']/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c])); }
 // Un cierre: bloqueo de la plataforma o fechas de Booking marcadas como «cerradas a mano»
 function esCierre(r) { return r.tipo === 'Bloqueo' || r.marca === 'cerrado'; }
-function clase(r) { if (esCierre(r)) return 'p-Bloqueo'; if (r.marca === 'externa') return 'p-Directa'; return PLATS.indexOf(r.plat) >= 0 ? 'p-' + r.plat : 'p-Otra'; }
+function clase(r) { if (esCierre(r)) return 'p-Bloqueo'; if (r.marca === 'externa') return 'p-Directa'; if (r.marca === 'smartbox') return 'p-Smartbox'; return PLATS.indexOf(r.plat) >= 0 ? 'p-' + r.plat : 'p-Otra'; }
 // Canal que se muestra: una reserva externa deja de ser «Booking»
-function canal(r) { return r.marca === 'externa' ? 'Externa' : r.plat; }
-function etiqueta(r) { return r.marca === 'cerrado' ? 'Cerrado' : r.marca === 'externa' ? 'Reserva externa' : r.tipo === 'Bloqueo' ? 'Bloqueado · ' + r.plat : r.plat; }
+function canal(r) { return r.marca === 'externa' ? 'Externa' : r.marca === 'smartbox' ? 'Smartbox' : r.plat; }
+function claseCanal(x) { return x === 'Externa' ? 'p-Directa' : x === 'Smartbox' ? 'p-Smartbox' : PLATS.indexOf(x) >= 0 ? 'p-' + x : 'p-Otra'; }
+function etiqueta(r) { return r.marca === 'cerrado' ? 'Cerrado' : r.marca === 'externa' ? 'Reserva externa' : r.marca === 'smartbox' ? 'Smartbox' : r.tipo === 'Bloqueo' ? 'Bloqueado · ' + r.plat : r.plat; }
 // Booking no distingue en su calendario entre una reserva y unas fechas cerradas a mano
 function porAclarar(r) { return r.plat === 'Booking' && r.tipo !== 'Bloqueo' && !r.marca; }
 function enChoque(id) { return D.solapes.some(p => p[0] === id || p[1] === id); }
@@ -189,7 +190,7 @@ function render() {
   const ch = ['todos'].concat(D.apartamentos);
   if (ch.indexOf(filtro) < 0) filtro = 'todos';
   $('#chips').innerHTML = ch.map(a => '<button class="chip' + (a === filtro ? ' on' : '') + '" data-filtro="' + esc(a) + '">' + (a === 'todos' ? 'Los dos' : esc(a)) + '</button>').join('');
-  if (tab === 'proximas') renderProximas(); else if (tab === 'ocupacion') renderOcupacion(); else renderCalendario();
+  if (tab === 'proximas') renderProximas(); else if (tab === 'ocupacion') renderOcupacion(); else if (tab === 'facturas') renderFacturas(); else renderCalendario();
 }
 
 function renderAvisos() {
@@ -230,7 +231,7 @@ function tarjeta(r) {
   if (r.nombre) datos.push(esc(r.nombre));
   if (r.tel4) datos.push('📞 …' + esc(r.tel4));
   return '<button class="card ' + clase(r) + (enChoque(r.id) ? ' choque' : '') + '" data-id="' + esc(r.id) + '">' +
-    '<div class="card-top"><span class="pill">' + esc(r.marca === 'cerrado' ? '🔒 Cerrado' : r.marca === 'externa' ? 'Externa' : esCierre(r) ? '🔒 ' + r.plat : r.plat) + '</span><span class="apt" data-corto="' + esc(nombreCorto(r.apt)) + '">' + esc(r.apt) + '</span>' +
+    '<div class="card-top"><span class="pill">' + esc(r.marca === 'cerrado' ? '🔒 Cerrado' : r.marca === 'externa' ? 'Externa' : r.marca === 'smartbox' ? '🎁 Smartbox' : esCierre(r) ? '🔒 ' + r.plat : r.plat) + '</span><span class="apt" data-corto="' + esc(nombreCorto(r.apt)) + '">' + esc(r.apt) + '</span>' +
     ((r.nueva || tag) ? '<span class="tags">' + (r.nueva ? '<span class="tag nueva">Nueva</span>' : '') + (tag ? '<span class="tag">' + esc(tag) + '</span>' : '') + '</span>' : '') + '</div>' +
     (dud ? '<div class="fechas">Hasta ' + esc(fCorta(r.salida)) + ' <span class="n">· entró hoy o antes</span></div>'
       : '<div class="fechas">' + esc(fCorta(r.entrada)) + ' → ' + esc(fCorta(r.salida)) + ' <span class="n">· ' + nTxt(noches(r.entrada, r.salida)) + '</span></div>') +
@@ -274,7 +275,7 @@ function renderCalendario() {
   let h = '<div class="mes"><button class="icon-btn" data-mes="-1" aria-label="Mes anterior"><svg viewBox="0 0 24 24" fill="none" stroke-width="2.2" stroke-linecap="round"><path d="M15 5l-7 7 7 7"/></svg></button>' +
     '<h2>' + MES_L[p[1] - 1] + ' ' + p[0] + '</h2>' +
     '<button class="icon-btn" data-mes="1" aria-label="Mes siguiente"><svg viewBox="0 0 24 24" fill="none" stroke-width="2.2" stroke-linecap="round"><path d="M9 5l7 7-7 7"/></svg></button></div>';
-  h += '<div class="leyenda">' + PLATS.map(x => '<span class="p-' + x + '"><i></i>' + x + '</span>').join('') + '<span class="p-Directa"><i></i>Externa</span><span class="p-Bloqueo"><i></i>Cerrado</span></div>';
+  h += '<div class="leyenda">' + PLATS.map(x => '<span class="p-' + x + '"><i></i>' + x + '</span>').join('') + '<span class="p-Directa"><i></i>Externa</span><span class="p-Smartbox"><i></i>Smartbox</span><span class="p-Bloqueo"><i></i>Cerrado</span></div>';
   if (apts.length > 1) h += '<div class="carriles">Cada día: ' + apts.map((a, i) => (i === 0 ? 'arriba ' : 'abajo ') + '<b>' + esc(a) + '</b>').join(' · ') + '</div>';
   // Noches con doble reserva (por apartamento)
   const choque = {};
@@ -339,10 +340,12 @@ function abrirReserva(id) {
     '<div class="dato"><span>Noches</span><b>' + (r.dudoso ? 'al menos ' + n : n) + '</b></div>' +
     (r.marca === 'cerrado' ? '<div class="dato"><span>Qué es</span><b>Fechas cerradas a mano</b></div>'
       : r.marca === 'externa' ? '<div class="dato"><span>Qué es</span><b>Reserva externa (no es de Booking)</b></div>'
+      : r.marca === 'smartbox' ? '<div class="dato"><span>Qué es</span><b>Reserva de Smartbox (cerrada en Booking)</b></div>'
       : '<div class="dato"><span>Plataforma</span><b>' + esc(r.plat) + '</b></div>') +
     (r.nombre ? '<div class="dato"><span>Huésped</span><b>' + esc(r.nombre) + '</b></div>' : '') +
     (r.tel4 ? '<div class="dato"><span>Teléfono</span><b>acaba en ' + esc(r.tel4) + '</b></div>' : '') +
     (r.codigo ? '<div class="dato"><span>Código</span><b>' + esc(r.codigo) + '</b></div>' : '') +
+    (r.factura ? '<div class="dato"><span>Factura</span><b>' + esc(r.factura) + (r.facturaEnv ? ' · enviada' : ' · sin enviar') + '</b></div>' : '') +
     '</div>';
   if (enChoque(r.id)) h += '<div class="aviso" style="margin-top:12px"><b>⚠️ Se solapa con otra reserva</b>Revísalo en las plataformas.</div>';
   if (r.dudoso) h += '<div class="hint">' + esc(r.plat) + ' no enseña las noches que ya han pasado, y la app vio esta reserva por primera vez cuando ya estaba empezada: puede que entrara antes. Las fechas exactas están en ' + esc(r.plat) + '.</div>';
@@ -350,7 +353,7 @@ function abrirReserva(id) {
     const quienM = r.marcaPor ? (r.marcaPor === SES.email ? 'ti' : r.marcaPor) : '';
     h += '<div class="detalle" style="margin-top:12px"><h3>¿Qué es esto?</h3>' +
       '<div class="hint" style="margin-top:0">El calendario de Booking marca igual una reserva y unas fechas cerradas a mano. La app lo trata como reserva de Booking; si no lo es, márcalo aquí.</div>' +
-      '<div class="seg"><button class="' + (r.marca === 'reserva' ? 'on' : '') + '" data-marca="reserva">✅ Es una reserva de Booking</button><button class="' + (r.marca === 'externa' ? 'on' : '') + '" data-marca="externa">📞 Es una reserva externa</button><button class="' + (r.marca === 'cerrado' ? 'on' : '') + '" data-marca="cerrado">🔒 Lo cerré yo</button></div>' +
+      '<div class="seg"><button class="' + (r.marca === 'reserva' ? 'on' : '') + '" data-marca="reserva">✅ Es una reserva de Booking</button><button class="' + (r.marca === 'externa' ? 'on' : '') + '" data-marca="externa">📞 Es una reserva externa</button><button class="' + (r.marca === 'smartbox' ? 'on' : '') + '" data-marca="smartbox">🎁 Es de Smartbox</button><button class="' + (r.marca === 'cerrado' ? 'on' : '') + '" data-marca="cerrado">🔒 Lo cerré yo</button></div>' +
       (r.marca ? '<div class="hint">Marcado por ' + esc(quienM) + '. Toca otra vez para quitarlo.</div>' : '') +
       (noches(r.entrada, r.salida) > 1
         ? '<div class="hint" style="margin-top:14px"><b>¿Son dos cosas seguidas?</b> Booking junta en un bloque una reserva y unos días cerrados. Elige dónde empieza la segunda parte y sepáralas; luego marca cada una.</div>' +
@@ -368,6 +371,7 @@ function abrirReserva(id) {
     '<div class="enlaces">' + (SR ? '<button class="btn" id="n-dictar">🎤 Dictar</button>' : '') + '<button class="btn" id="n-guardar">Guardar nota</button></div>' +
     (SR ? '' : '<div class="hint">Para dictar, toca el micrófono del teclado.</div>') +
     '<div class="msg" id="n-msg"></div>';
+  if (llevaFactura(r)) h += '<div class="enlaces"><button class="btn" data-factura="' + esc(r.id) + '">🧾 ' + (r.factura ? 'Factura ' + esc(r.factura) : 'Hacer la factura') + '</button></div>';
   h += '<div class="acciones">' + (r.enlace ? '<a class="btn" target="_blank" rel="noopener" href="' + esc(r.enlace) + '">Ver en ' + esc(r.plat) + '</a>' : '') + '<button class="btn prim" id="f-cerrar">Cerrar</button></div>';
   abrirHoja(h);
   const ta = $('#n-texto'), original = r.notas || '';
@@ -388,7 +392,7 @@ function abrirReserva(id) {
     b.onclick = async () => {
       const marca = r.marca === b.dataset.marca ? '' : b.dataset.marca;
       document.querySelectorAll('[data-marca]').forEach(x => { x.disabled = true; });
-      try { D = await api('marcar', { id: r.id, marca }); guardar('nv-datos', D); render(); toast(marca === 'cerrado' ? 'Marcado: fechas cerradas a mano' : marca === 'externa' ? 'Marcado: reserva externa' : marca === 'reserva' ? 'Marcado: reserva de Booking' : 'Marca quitada'); abrirReserva(r.id); }
+      try { D = await api('marcar', { id: r.id, marca }); guardar('nv-datos', D); render(); toast(marca === 'cerrado' ? 'Marcado: fechas cerradas a mano' : marca === 'externa' ? 'Marcado: reserva externa' : marca === 'smartbox' ? 'Marcado: reserva de Smartbox' : marca === 'reserva' ? 'Marcado: reserva de Booking' : 'Marca quitada'); abrirReserva(r.id); }
       catch (e) { $('#m-marca').innerHTML = '<div class="aviso mal">' + esc(msgError(e)) + '</div>'; document.querySelectorAll('[data-marca]').forEach(x => { x.disabled = false; }); }
     };
   });
@@ -462,15 +466,159 @@ function renderOcupacion() {
     }
     h += '<div class="detalle ocup"><div class="ocup-top"><h3>' + esc(a) + '</h3><span class="pct">' + pct + '%</span></div>' +
       '<div class="hint" style="margin:0 0 8px">' + ocup + ' de ' + base + ' noches ocupadas' + (sinDatos ? ' · <b>contando desde el ' + esc(fDia(desdeDatos)) + '</b>' : '') + '</div>' +
-      '<div class="barra-ocup">' + PLATS.concat(['Externa']).filter(x => porPlat[x]).map(x => '<i class="' + (x === 'Externa' ? 'p-Directa' : 'p-' + x) + '" style="width:' + (porPlat[x] * 100 / (base || 1)) + '%"></i>').join('') +
+      '<div class="barra-ocup">' + PLATS.concat(['Smartbox', 'Externa']).filter(x => porPlat[x]).map(x => '<i class="' + claseCanal(x) + '" style="width:' + (porPlat[x] * 100 / (base || 1)) + '%"></i>').join('') +
       (bloq ? '<i class="p-Bloqueo" style="width:' + (bloq * 100 / (base || 1)) + '%"></i>' : '') + '</div>' +
-      Object.keys(porPlat).map(x => '<div class="dato ' + (x === 'Externa' ? 'p-Directa' : PLATS.indexOf(x) >= 0 ? 'p-' + x : 'p-Otra') + '"><span><i class="punto"></i>' + esc(x) + '</span><b>' + nTxt(porPlat[x]) + ' · ' + reservasPlat[x] + (reservasPlat[x] === 1 ? ' reserva' : ' reservas') + '</b></div>').join('') +
+      Object.keys(porPlat).map(x => '<div class="dato ' + claseCanal(x) + '"><span><i class="punto"></i>' + esc(x) + '</span><b>' + nTxt(porPlat[x]) + ' · ' + reservasPlat[x] + (reservasPlat[x] === 1 ? ' reserva' : ' reservas') + '</b></div>').join('') +
       (bloq ? '<div class="dato p-Bloqueo"><span><i class="punto"></i>Bloqueadas</span><b>' + nTxt(bloq) + '</b></div>' : '') +
       '<div class="dato"><span><i class="punto" style="background:var(--line)"></i>Libres</span><b>' + nTxt(libres) + '</b></div></div>';
   });
   if (apts.length > 1 && tot.total) h += '<div class="hint" style="text-align:center">Los dos apartamentos: <b>' + Math.round(tot.ocup * 100 / tot.total) + '%</b> de ocupación</div>';
   if (mesOc >= D.hoy.slice(0, 7)) h += '<div class="hint" style="text-align:center">Cuenta lo reservado hasta hoy; puede subir con nuevas reservas.</div>';
   $('#vista').innerHTML = h;
+}
+
+
+/* ---------- Facturas ----------
+ * Desde el 1/12/2026 cada estancia lleva factura con IVA del 10 %. La hace el motor de facturas
+ * (cuenta del negocio); aquí se completa lo que falte y se envía el PDF por WhatsApp. */
+const FACTURAS_DESDE = '2026-12-01';
+const LIMITE_SIMPLIFICADA = 400;
+const PDFS = {};   // PDF ya descargados en esta sesión: id → {pdf, archivo}
+function llevaFactura(r) { return !esCierre(r) && r.salida > FACTURAS_DESDE && r.salida <= D.hoy; }
+function eur(x) { const [a, b] = Number(x || 0).toFixed(2).split('.'); return a.replace(/\B(?=(\d{3})+(?!\d))/g, '.') + ',' + b + ' €'; }
+function trimestre(ymd) { return ymd.slice(0, 4) + '-T' + Math.ceil(Number(ymd.slice(5, 7)) / 3); }
+const NOMBRE_TRIM = { 1: 'enero–marzo', 2: 'abril–junio', 3: 'julio–septiembre', 4: 'octubre–diciembre' };
+
+function tarjetaFactura(r) {
+  const estado = !r.factura ? (r.importe ? 'Por hacer' : 'Falta el importe') : r.facturaEnv ? 'Enviada' : 'Por enviar';
+  return '<button class="card ' + clase(r) + '" data-factura="' + esc(r.id) + '">' +
+    '<div class="card-top"><span class="pill">' + esc(canal(r)) + '</span><span class="apt" data-corto="' + esc(nombreCorto(r.apt)) + '">' + esc(r.apt) + '</span>' +
+    '<span class="tags"><span class="tag' + (r.factura ? '' : ' nueva') + '">' + esc(estado) + '</span></span></div>' +
+    '<div class="fechas">' + esc(fCorta(r.entrada)) + ' → ' + esc(fCorta(r.salida)) + ' <span class="n">· ' + nTxt(noches(r.entrada, r.salida)) + '</span></div>' +
+    '<div class="quien">' + [r.nombre ? esc(r.nombre) : '', r.factura ? esc(r.factura) + ' · ' + eur(r.facturaTotal) : r.importe ? eur(r.importe) : ''].filter(String).join(' · ') + '</div>' +
+    '</button>';
+}
+
+function renderFacturas() {
+  const rs = D.reservas.filter(r => llevaFactura(r) && (filtro === 'todos' || r.apt === filtro))
+    .sort((a, b) => b.salida.localeCompare(a.salida));
+  const t = trimestre(D.hoy), delTrim = D.reservas.filter(r => r.factura && r.facturaFecha && trimestre(r.facturaFecha) === t);
+  const cuota = delTrim.reduce((s, r) => s + Number(r.facturaCuota || 0), 0), total = delTrim.reduce((s, r) => s + Number(r.facturaTotal || 0), 0);
+  let h = '<div class="aviso" style="background:var(--card);border-left-color:var(--accent)"><b>IVA de este trimestre (' + NOMBRE_TRIM[t.slice(-1)] + ')</b>' +
+    eur(cuota) + ' de IVA en ' + delTrim.length + (delTrim.length === 1 ? ' factura' : ' facturas') + ' (' + eur(total) + ' cobrados)' +
+    '<div class="hint" style="margin-bottom:0">El IVA de las comisiones y los gastos se resta en el libro de facturas, en «Resumen IVA».</div></div>';
+  const grupos = [
+    ['Por hacer', rs.filter(r => !r.factura)],
+    ['Por enviar', rs.filter(r => r.factura && !r.facturaEnv)],
+    ['Enviadas', rs.filter(r => r.factura && r.facturaEnv).slice(0, 30)],
+  ];
+  grupos.forEach(g => { if (g[1].length) h += '<div class="grupo">' + g[0] + '</div>' + g[1].map(tarjetaFactura).join(''); });
+  if (!rs.length) h += '<div class="vacio-lista"><b>No hay facturas pendientes</b>' + (D.hoy <= FACTURAS_DESDE
+    ? 'Las facturas empiezan con las estancias que terminan después del 1 de diciembre de 2026.'
+    : 'Cuando termine una estancia, aparecerá aquí para hacer y enviar su factura.') + '</div>';
+  $('#vista').innerHTML = h;
+  ajustarNombres();
+}
+
+function ayudaImporte(r) {
+  if (r.marca === 'externa') return 'Lo que te pagó el huésped por el alojamiento.';
+  if (r.marca === 'smartbox') return 'De Smartbox: el «Precio de la experiencia» de su correo de reserva (no lo que te ingresan, que ya lleva quitada la comisión).';
+  if (r.plat === 'Booking') return 'Booking no lo manda por correo: en la extranet → Reservas → esta reserva' + (r.numPlat ? ' (nº ' + esc(r.numPlat) + ')' : '') + ', el precio total que paga el huésped.';
+  if (r.plat === 'Airbnb') return 'De Airbnb: «Precio de la habitación por X noches» (sin la comisión de Airbnb).';
+  if (r.plat === 'Vrbo') return 'De Vrbo: «Importe de la reserva» (sin la tasa de servicio de Vrbo).';
+  return 'Lo que pagó el huésped por el alojamiento.';
+}
+
+function abrirFactura(id) {
+  const r = D.reservas.find(x => x.id === id);
+  if (!r) return;
+  let h = '<div class="hoja-top ' + clase(r) + '"><span class="pill">' + esc(canal(r)) + '</span><span class="apt">' + esc(r.apt) + '</span></div>' +
+    '<h2>🧾 ' + (r.factura ? 'Factura ' + esc(r.factura) : 'Hacer la factura') + '</h2>' +
+    '<div class="detalle" style="margin-top:12px">' +
+    '<div class="dato"><span>Estancia</span><b>' + esc(fCorta(r.entrada)) + ' → ' + esc(fCorta(r.salida)) + ' · ' + nTxt(noches(r.entrada, r.salida)) + '</b></div>' +
+    (r.nombre ? '<div class="dato"><span>Huésped</span><b>' + esc(r.nombre) + '</b></div>' : '') +
+    (r.numPlat || r.codigo ? '<div class="dato"><span>Nº reserva</span><b>' + esc(r.numPlat || r.codigo) + '</b></div>' : '') +
+    (r.factura ? '<div class="dato"><span>Total</span><b>' + eur(r.facturaTotal) + ' (IVA ' + eur(r.facturaCuota) + ')</b></div>' : '') +
+    '</div>';
+  const telV = r.tel || '';
+  const telHint = !telV && r.tel4 ? 'Acaba en ' + esc(r.tel4) + '. El número completo está en la app de ' + esc(r.plat) + '.' : 'Con el prefijo del país, por ejemplo +34 600 123 456.';
+  if (!r.factura) {
+    h += '<label class="campo">Importe que pagó el huésped (IVA incluido)<input id="fa-imp" inputmode="decimal" autocomplete="off" placeholder="Ej.: 255,00" value="' + esc(r.importe ? String(r.importe).replace('.', ',') : '') + '"></label>' +
+      '<div class="hint">' + ayudaImporte(r) + '</div>' +
+      '<label class="campo">Teléfono del huésped (para WhatsApp)<input id="fa-tel" inputmode="tel" autocomplete="off" value="' + esc(telV) + '"></label>' +
+      '<div class="hint">' + telHint + '</div>' +
+      '<div id="fa-huesped" hidden><div class="hint" style="margin-top:14px"><b>Más de ' + LIMITE_SIMPLIFICADA + ' €: factura completa.</b> Son los mismos datos que pones en el parte de viajeros (SES.Hospedajes).</div>' +
+      '<label class="campo">Nombre y apellidos<input id="fa-nom" autocomplete="off" value="' + esc(r.nombre || '') + '"></label>' +
+      '<label class="campo">DNI, NIE o pasaporte<input id="fa-doc" autocomplete="off"></label>' +
+      '<label class="campo">Domicilio (calle, número, ciudad, código postal)<textarea id="fa-dom" style="min-height:64px"></textarea></label>' +
+      '<label class="campo">País<input id="fa-pais" autocomplete="off" placeholder="España"></label></div>' +
+      '<div class="msg" id="fa-msg"></div>' +
+      '<div class="acciones"><button class="btn" id="fa-volver">Cerrar</button><button class="btn prim" id="fa-hacer">Hacer factura</button></div>';
+  } else {
+    const wa = telV ? 'https://wa.me/' + telV.replace(/\D/g, '') + '?text=' + encodeURIComponent('Hola' + (r.nombre ? ' ' + r.nombre.split(' ')[0] : '') + ', gracias por alojarse en Apartamentos Nuncio Viejo. Le envío la factura de su estancia.\nHello, thank you for staying with us. Here is your invoice.') : '';
+    h += (telV ? '' : '<label class="campo">Teléfono del huésped (para WhatsApp)<input id="fa-tel" inputmode="tel" autocomplete="off"></label><div class="hint">' + telHint + '</div><div class="enlaces"><button class="btn" id="fa-guardatel">Guardar teléfono</button></div>') +
+      '<div class="menu-lista" style="margin-top:14px">' +
+      (wa ? '<a class="btn" id="fa-chat" target="_blank" rel="noopener" href="' + esc(wa) + '">1 · Abrir chat de WhatsApp</a>' : '') +
+      '<button class="btn prim" id="fa-enviar">' + (wa ? '2 · ' : '') + 'Enviar la factura (PDF)</button>' +
+      '<button class="btn" id="fa-marca">' + (r.facturaEnv ? '↩️ No está enviada' : '✅ Ya la he enviado') + '</button></div>' +
+      (wa ? '<div class="hint">Primero abre el chat y manda el mensaje; después «Enviar la factura» y elige WhatsApp y el chat del huésped (saldrá el primero).</div>' : '') +
+      '<div class="msg" id="fa-msg"></div>' +
+      '<div class="acciones"><button class="btn" id="fa-volver">Cerrar</button></div>';
+  }
+  abrirHoja(h);
+  const err = e => { $('#fa-msg').innerHTML = '<div class="aviso mal">' + esc(msgError(e)) + '</div>'; };
+  $('#fa-volver').onclick = cerrarHoja;
+  if (!r.factura) {
+    const imp = $('#fa-imp'), bloque = $('#fa-huesped');
+    const numImp = () => Number(imp.value.replace(/\.(?=\d{3}(\D|$))/g, '').replace(',', '.'));
+    const ver = () => { bloque.hidden = !(numImp() > LIMITE_SIMPLIFICADA); };
+    imp.oninput = ver; ver();
+    $('#fa-hacer').onclick = async () => {
+      const b = $('#fa-hacer'); b.disabled = true; b.textContent = 'Haciendo factura…'; $('#fa-msg').innerHTML = '';
+      try {
+        const extra = { id: r.id, importe: imp.value, tel: $('#fa-tel').value };
+        if (!bloque.hidden) Object.assign(extra, { nombre: $('#fa-nom').value, doc: $('#fa-doc').value, domicilio: $('#fa-dom').value, pais: $('#fa-pais').value });
+        const j = await api('facturar', extra);
+        PDFS[r.id] = { pdf: j.pdf, archivo: j.archivo };
+        if (j.datos) { D = j.datos; guardar('nv-datos', D); render(); }
+        toast('Factura ' + j.numero + ' hecha');
+        abrirFactura(r.id);
+      } catch (e) { err(e); b.disabled = false; b.textContent = 'Hacer factura'; }
+    };
+    return;
+  }
+  if ($('#fa-guardatel')) $('#fa-guardatel').onclick = async () => {
+    const b = $('#fa-guardatel'); b.disabled = true;
+    try { const j = await api('facturar', { id: r.id, tel: $('#fa-tel').value }); PDFS[r.id] = { pdf: j.pdf, archivo: j.archivo }; if (j.datos) { D = j.datos; guardar('nv-datos', D); render(); } abrirFactura(r.id); }
+    catch (e) { err(e); b.disabled = false; }
+  };
+  $('#fa-marca').onclick = async () => {
+    const b = $('#fa-marca'); b.disabled = true;
+    try { D = await api('facturaEnviada', { id: r.id, enviada: !r.facturaEnv }); guardar('nv-datos', D); render(); abrirFactura(r.id); }
+    catch (e) { err(e); b.disabled = false; }
+  };
+  $('#fa-enviar').onclick = async () => {
+    const b = $('#fa-enviar'), txt = b.textContent; b.disabled = true; b.textContent = 'Preparando el PDF…';
+    try {
+      if (!PDFS[r.id]) { const j = await api('pdfFactura', { id: r.id }); PDFS[r.id] = { pdf: j.pdf, archivo: j.archivo }; }
+      const bin = atob(PDFS[r.id].pdf), bytes = new Uint8Array(bin.length);
+      for (let i = 0; i < bin.length; i++) bytes[i] = bin.charCodeAt(i);
+      const nombre = 'Factura ' + PDFS[r.id].archivo;
+      const file = new File([bytes], nombre, { type: 'application/pdf' });
+      if (navigator.canShare && navigator.canShare({ files: [file] })) {
+        await navigator.share({ files: [file], title: nombre });
+        if (!r.facturaEnv) { D = await api('facturaEnviada', { id: r.id, enviada: true }); guardar('nv-datos', D); render(); toast('Factura enviada'); }
+        abrirFactura(r.id);
+      } else {
+        const a = document.createElement('a'); a.href = URL.createObjectURL(file); a.download = nombre; document.body.appendChild(a); a.click(); a.remove();
+        toast('PDF descargado: adjúntalo en WhatsApp');
+        b.disabled = false; b.textContent = txt;
+      }
+    } catch (e) {
+      if (e && e.name === 'AbortError') { b.disabled = false; b.textContent = txt; return; }   // canceló el menú de compartir
+      err(e); b.disabled = false; b.textContent = txt;
+    }
+  };
 }
 
 /* ---------- Menú ---------- */
@@ -531,11 +679,16 @@ const TIPOS_REG = {
   todas_cerradas: ['🔒', 'Se cerraron todas las sesiones'],
   nota: ['📝', 'Escribió una nota'],
   nota_borrada: ['📝', 'Borró una nota'],
+  factura: ['🧾', 'Hizo una factura'],
+  factura_enviada: ['🧾', 'Marcó una factura como enviada'],
+  factura_no_enviada: ['🧾', 'Desmarcó una factura como enviada'],
+  clave_facturas: ['🚫', 'Intento de pasar datos de facturas sin la clave'],
   calendario_mal: ['⚠️', 'Un calendario no se puede leer (aviso enviado)'],
   calendario_ok: ['✅', 'Calendario arreglado'],
   marca_cerrado: ['🔒', 'Marcó unas fechas de Booking como cerradas a mano'],
   marca_reserva: ['✅', 'Confirmó una reserva de Booking'],
   marca_externa: ['📞', 'Marcó unas fechas de Booking como reserva externa'],
+  marca_smartbox: ['🎁', 'Marcó unas fechas de Booking como reserva de Smartbox'],
   separado: ['✂️', 'Separó un bloque de Booking en dos'],
   marca_quitada: ['↩️', 'Quitó una marca de Booking'],
 };
@@ -618,7 +771,7 @@ document.addEventListener('click', e => {
   const t = e.target;
   const ac = t.closest('[data-accion]');
   if (ac) { if (ac.dataset.accion === 'recargar') cargar(); else if (ac.dataset.accion === 'calendarios') abrirCalendarios(); return; }
-  if (t.closest('.hoja') && !t.closest('[data-id]')) return;
+  if (t.closest('.hoja') && !t.closest('[data-id]') && !t.closest('[data-factura]')) return;
   const tb = t.closest('.tabs button'); if (tb) { tab = tb.dataset.tab; render(); window.scrollTo(0, 0); return; }
   const ch = t.closest('[data-filtro]'); if (ch) { filtro = ch.dataset.filtro; render(); return; }
   const mo = t.closest('[data-mesoc]');
@@ -626,6 +779,7 @@ document.addEventListener('click', e => {
   const mb = t.closest('[data-mes]');
   if (mb) { const p = mes.split('-').map(Number); const d = new Date(Date.UTC(p[0], p[1] - 1 + Number(mb.dataset.mes), 1)); mes = d.toISOString().slice(0, 7); diaSel = null; render(); return; }
   const di = t.closest('[data-dia]'); if (di) { diaSel = di.dataset.dia; if (diaSel.slice(0, 7) !== mes) mes = diaSel.slice(0, 7); render(); return; }
+  const fb = t.closest('[data-factura]'); if (fb) { pararDictado(); abrirFactura(fb.dataset.factura); return; }
   const re = t.closest('[data-id]'); if (re) abrirReserva(re.dataset.id);
 });
 $('#velo').addEventListener('click', e => { if (e.target.id === 'velo') cerrarHoja(); });
