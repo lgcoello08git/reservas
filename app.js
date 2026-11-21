@@ -343,9 +343,12 @@ function explicaBooking(r) {
   if (m === 'reparación') return 'Salía rayado en las capturas del calendario de Booking: cerrado a mano (o una reserva de otra plataforma).';
   if (m === 'auto:sin correo') return 'No llegó ningún correo de reserva de Booking ni de Smartbox para estas fechas: son fechas cerradas a mano.';
   if (r.aclarar === 'pendiente') return '⏳ Acaba de aparecer en el calendario de Booking. Si en unas horas no llega el correo de «Nueva reserva», la app lo dará por cerrado a mano.';
-  if (r.aclarar === 'ambiguo') return /^Smartbox/.test(r.ambiguo || '')
-    ? '❓ Hay un correo de Smartbox para estas fechas (' + esc(r.ambiguo.replace(/^Smartbox /, '')) + '), pero no dice de qué apartamento es y están cerradas en los dos. Márcalo como «Es de Smartbox» en el que sea.'
-    : '❓ Hay un correo de reserva de Booking para este día (' + esc(r.ambiguo) + '), pero Booking no dice de qué apartamento es y hay cierres en los dos. Míralo en Booking y márcalo.';
+  if (r.aclarar === 'ambiguo') {
+    const a = r.ambiguo || '';
+    if (/^Smartbox \d/.test(a)) return '❓ Hay un correo de Smartbox para estas fechas (' + esc(a.replace(/^Smartbox /, '')) + '), pero no dice de qué apartamento es y están cerradas en los dos. Márcalo como «Es de Smartbox» en el que sea.';
+    if (/^Booking [\d, /]+$/.test(a)) return '❓ Hay un correo de reserva de Booking para este día (' + esc(a) + '), pero Booking no dice de qué apartamento es y hay cierres en los dos. Míralo en Booking y márcalo.';
+    return '❓ ' + esc(a) + ' La app no lo puede saber sola: míralo en Booking y márcalo.';
+  }
   if (r.aclarar === 'quitada') return 'Se quitó la marca a mano, así que la app ya no lo decide sola. Márcalo cuando sepas qué es.';
   if (r.aclarar === 'antiguo') return 'Es de antes de que los avisos de Booking llegaran al correo del negocio, así que la app no puede saber qué es. Míralo en Booking (amarillo = reserva, rayado = cerrado) y márcalo.';
   return 'El calendario de Booking marca igual una reserva y unas fechas cerradas a mano. Si no es lo que dice la app, márcalo aquí.';
@@ -729,6 +732,9 @@ const TIPOS_REG = {
   auto_cancelada: ['❌', 'Cancelada (por correo)'],
   auto_ampliada: ['➕', 'Reserva de Booking ampliada (por correo)'],
   auto: ['🤖', 'Cambios automáticos'],
+  bloqueado_24h: ['⛔', 'Email bloqueado 24 h por códigos mal escritos (aviso enviado)'],
+  limite_dia: ['⚠️', 'Demasiados códigos pedidos hoy'],
+  correo_fallo: ['⚠️', 'No se pudo enviar el código por email'],
 };
 let REG = null, regFiltro = 'todos';
 function diaReg(t) {
