@@ -6,7 +6,7 @@ const DSEM_L = ['domingo', 'lunes', 'martes', 'miércoles', 'jueves', 'viernes',
 const MES = ['ene', 'feb', 'mar', 'abr', 'may', 'jun', 'jul', 'ago', 'sep', 'oct', 'nov', 'dic'];
 const MES_L = ['enero', 'febrero', 'marzo', 'abril', 'mayo', 'junio', 'julio', 'agosto', 'septiembre', 'octubre', 'noviembre', 'diciembre'];
 
-let D = null, tab = 'proximas', filtro = 'todos', mes = null, mesOc = null, diaSel = null, ocupado = false, sinConexion = false;
+let D = null, busqueda = '', tab = 'proximas', filtro = 'todos', mes = null, mesOc = null, diaSel = null, ocupado = false, sinConexion = false;
 const $ = s => document.querySelector(s);
 
 /* ---------- Almacén local (puede fallar en modo privado) ---------- */
@@ -103,7 +103,7 @@ function cerrarHoja() { $('#velo').hidden = true; document.body.classList.remove
 /* ---------- Entrar con email y código ---------- */
 function pantallaEntrar(email) {
   $('#cabecera').hidden = true; $('#pestanas').hidden = true;
-  $('#chips').innerHTML = ''; $('#avisos').innerHTML = '';
+  $('#chips').innerHTML = ''; $('#avisos').innerHTML = ''; $('#buscador').hidden = true; $('#buscar').value = ''; busqueda = '';
   $('#vista').innerHTML = '<div class="login"><h2>Reservas Nuncio Viejo</h2>' +
     '<p>Escribe tu email. Si tienes acceso, te llegará un código de 6 cifras.</p>' +
     '<label class="campo">Email<input id="l-email" type="email" inputmode="email" autocomplete="email" value="' + esc(email || '') + '"></label>' +
@@ -194,6 +194,7 @@ function render() {
   const ch = ['todos'].concat(D.apartamentos);
   if (ch.indexOf(filtro) < 0) filtro = 'todos';
   $('#chips').innerHTML = ch.map(a => '<button class="chip' + (a === filtro ? ' on' : '') + '" data-filtro="' + esc(a) + '">' + (a === 'todos' ? 'Los dos' : esc(a)) + '</button>').join('');
+  $('#buscador').hidden = tab !== 'proximas';
   if (tab === 'proximas') renderProximas(); else if (tab === 'ocupacion') renderOcupacion(); else if (tab === 'facturas') renderFacturas(); else renderCalendario();
 }
 
@@ -223,12 +224,19 @@ function renderAvisos() {
       linea(a) + linea(b) +
       '<div style="margin-top:8px;color:var(--muted);font-size:14px">Entra en las plataformas y cancela o mueve una de las dos cuanto antes.</div></div>');
   });
+  // Partes de viajeros que ya deberían estar hechos (entraron antes de hoy)
+  const atrasados = D.reservas.filter(r => r.partePend && r.entrada < D.hoy).sort((a, b) => a.entrada.localeCompare(b.entrada));
+  if (atrasados.length) h.push('<div class="aviso"><b>📋 ' + (atrasados.length === 1 ? 'Un parte de viajeros sin hacer' : atrasados.length + ' partes de viajeros sin hacer') + '</b>' +
+    'Son obligatorios en SES.Hospedajes en las 24 h siguientes a la entrada. Cuando esté hecho, márcalo en la reserva.' + atrasados.map(r => miniTarjeta(r, 'Entró')).join('') + '</div>');
   const malas = D.fuentes.filter(f => f.tieneUrl && !f.ok && f.error && !f.provisional);
   if (malas.length) h.push('<div class="aviso mal"><b>No se puede leer ' + (malas.length === 1 ? 'un calendario' : malas.length + ' calendarios') + '</b>' + malas.map(f => esc(f.plat + ' · ' + f.apt)).join('<br>') + '<br><span style="color:var(--muted)">Sus reservas pueden no estar al día.</span></div>');
   const faltan = D.fuentes.filter(f => !f.tieneUrl);
   if (faltan.length && D.admin) h.push('<div class="aviso"><b>Faltan ' + faltan.length + ' calendarios por conectar</b><button class="btn" style="margin-top:8px;width:100%" data-accion="calendarios">Conectar calendarios</button></div>');
   $('#avisos').innerHTML = h.join('');
 }
+
+/* El día que entra esta reserva sale otra del mismo apartamento: la limpieza tiene que caber entre medias */
+function diaDeCambio(r) { return !esCierre(r) && D.reservas.some(x => x !== r && x.apt === r.apt && x.salida === r.entrada && !esCierre(x)); }
 
 function tarjeta(r) {
   const hoy = D.hoy, man = sumar(hoy, 1);
@@ -252,6 +260,8 @@ function tarjeta(r) {
       : '<div class="fechas">' + esc(fCorta(r.entrada)) + ' → ' + esc(fCorta(r.salida)) + ' <span class="n">· ' + nTxt(noches(r.entrada, r.salida)) + '</span></div>') +
     (datos.length ? '<div class="quien">' + datos.join(' · ') + '</div>' : '') +
     (r.notas ? '<div class="nota">📝 ' + esc(r.notas) + '</div>' : '') +
+    (diaDeCambio(r) && r.entrada >= hoy ? '<div class="quien" style="font-size:13px">🔄 Día de cambio: ese día sale otro huésped</div>' : '') +
+    (r.partePend ? '<div class="quien" style="font-size:13px;color:var(--warn);font-weight:700">📋 Parte de viajeros pendiente</div>' : '') +
     (r.cancelCorreo ? '<div class="quien vacio" style="font-size:13px;color:var(--bad)">Cancelada (aviso del ' + esc(fDia(r.cancelCorreo)) + '). Si no hay nadie, abre las fechas.</div>'
       : r.marca === 'cerrado' ? '<div class="quien vacio" style="font-size:13px">Fechas cerradas a mano (no es reserva)</div>'
       : r.aclarar === 'ambiguo' && !r.marca ? '<div class="quien vacio" style="font-size:13px">¿Reserva o cerrado? Tócala para aclararlo</div>'
@@ -261,7 +271,24 @@ function tarjeta(r) {
     '</button>';
 }
 
+/* Buscar por huésped, nº de reserva, código, teléfono o nota (en todas las reservas guardadas, también las pasadas) */
+function sinAcentos(s) { return String(s || '').normalize('NFD').replace(/[\u0300-\u036f]/g, '').toLowerCase(); }
+function coincide(r, q) {
+  const t = sinAcentos(q).trim(), dig = q.replace(/\D/g, '');
+  if (sinAcentos([r.nombre, r.numPlat, r.codigo, r.notas, r.factura].join(' ')).indexOf(t) >= 0) return true;
+  return dig.length >= 4 && [r.tel, r.numPlat, r.codigo, r.tel4].some(x => String(x || '').replace(/\D/g, '').indexOf(dig) >= 0);
+}
+function renderBusqueda() {
+  const q = busqueda.trim();
+  const rs = D.reservas.filter(r => (filtro === 'todos' || r.apt === filtro) && coincide(r, q)).sort((a, b) => b.entrada.localeCompare(a.entrada)).slice(0, 50);
+  $('#vista').innerHTML = rs.length
+    ? '<div class="grupo">' + rs.length + (rs.length === 1 ? ' resultado' : ' resultados') + '</div>' + rs.map(tarjeta).join('')
+    : '<div class="vacio-lista"><b>Nada con «' + esc(q) + '»</b>Busca por nombre del huésped, nº de reserva, teléfono o lo escrito en una nota.</div>';
+  ajustarNombres();
+}
+
 function renderProximas() {
+  if (busqueda.trim().length >= 2) { renderBusqueda(); return; }
   const hoy = D.hoy, man = sumar(hoy, 1), sem = sumar(hoy, 7);
   const rs = D.reservas.filter(r => r.salida >= hoy && (filtro === 'todos' || r.apt === filtro))
     .sort((a, b) => (a.entrada + a.apt).localeCompare(b.entrada + b.apt));
@@ -383,11 +410,32 @@ function abrirReserva(id) {
       : r.marca === 'smartbox' ? '<div class="dato"><span>Qué es</span><b>Reserva de Smartbox (cerrada en Booking)</b></div>'
       : '<div class="dato"><span>Plataforma</span><b>' + esc(r.plat) + '</b></div>') +
     (r.nombre ? '<div class="dato"><span>Huésped</span><b>' + esc(r.nombre) + '</b></div>' : '') +
-    (r.tel4 ? '<div class="dato"><span>Teléfono</span><b>acaba en ' + esc(r.tel4) + '</b></div>' : '') +
+    (r.tel ? '<div class="dato"><span>Teléfono</span><b>' + esc(r.tel) + '</b></div>'
+      : r.tel4 ? '<div class="dato"><span>Teléfono</span><b>acaba en ' + esc(r.tel4) + '</b></div>' : '') +
     (r.codigo ? '<div class="dato"><span>Código</span><b>' + esc(r.codigo) + '</b></div>' : '') +
     (r.numPlat && r.numPlat !== r.codigo ? '<div class="dato"><span>Nº de reserva</span><b>' + esc(r.numPlat) + '</b></div>' : '') +
     (r.factura ? '<div class="dato"><span>Factura</span><b>' + esc(r.factura) + (r.facturaEnv ? ' · enviada' : ' · sin enviar') + '</b></div>' : '') +
     '</div>';
+  // Llamar o escribir al huésped (el teléfono viene del correo o se escribe aquí)
+  if (!esCierre(r)) {
+    h += r.tel
+      ? '<div class="enlaces"><a class="btn" href="tel:' + esc(r.tel) + '">📞 Llamar</a><a class="btn" target="_blank" rel="noopener" href="https://wa.me/' + esc(r.tel.replace(/\D/g, '')) + '">💬 WhatsApp</a><button class="btn" id="t-editar" aria-label="Cambiar el teléfono">✏️</button></div>'
+      : '<div class="enlaces"><button class="btn" id="t-editar">📞 Añadir el teléfono del huésped</button></div>';
+    h += '<div id="t-form" hidden><label class="campo">Teléfono del huésped<input id="t-tel" inputmode="tel" autocomplete="off" value="' + esc(r.tel || '') + '"></label>' +
+      '<div class="hint">Con el prefijo del país, por ejemplo +34 600 123 456.' + (r.tel4 && !r.tel ? ' Acaba en ' + esc(r.tel4) + '; el número completo está en la app de ' + esc(r.plat) + '.' : r.plat === 'Booking' && !r.tel ? ' Booking no lo manda: está en la app de Booking.' : '') + '</div>' +
+      '<div class="enlaces"><button class="btn" id="t-guardar">Guardar teléfono</button></div><div class="msg" id="t-msg"></div></div>';
+  }
+  if (diaDeCambio(r)) h += '<div class="hint">🔄 <b>Día de cambio:</b> el día que entra sale otro huésped de este apartamento. La limpieza tiene que caber entre la salida y la entrada.</div>';
+  // Parte de viajeros (SES.Hospedajes): la app solo recuerda que está pendiente
+  if (r.llevaParte) {
+    const quienP = r.partePor ? (r.partePor === SES.email ? 'ti' : r.partePor) : '';
+    h += '<div class="detalle" style="margin-top:12px"><h3>📋 Parte de viajeros</h3>' +
+      (r.parte
+        ? '<div class="hint" style="margin-top:0">✅ Hecho (lo marcó ' + esc(quienP) + ' el ' + esc(r.parte.slice(8, 10) + '/' + r.parte.slice(5, 7) + ' a las ' + r.parte.slice(11, 16)) + ').</div><div class="enlaces"><button class="btn" id="p-boton">↩️ No está hecho</button></div>'
+        : '<div class="hint" style="margin-top:0">' + (r.entrada > D.hoy ? 'Se hace en SES.Hospedajes cuando lleguen: en las 24 h siguientes a la entrada.' : '<b style="color:var(--warn)">Pendiente.</b> Hay que hacerlo en SES.Hospedajes en las 24 h siguientes a la entrada.') + ' Cuando esté hecho, márcalo aquí.</div>' +
+          '<div class="enlaces"><button class="btn prim" id="p-boton">✅ Parte hecho</button></div>') +
+      '<div class="msg" id="p-msg"></div></div>';
+  }
   if (enChoque(r.id)) h += '<div class="aviso" style="margin-top:12px"><b>⚠️ Se solapa con otra reserva</b>Revísalo en las plataformas.</div>';
   if (r.cancelCorreo) h += '<div class="aviso" style="margin-top:12px"><b>❌ Cancelada</b>' + esc(canal(r)) + ' avisó por correo de que esta reserva se ha cancelado, pero el calendario aún tiene esas fechas cerradas. Si no va a venir nadie, ábrelas en ' + esc(canal(r) === 'Smartbox' ? 'Booking (y en Airbnb si también las cerraste)' : r.plat) + '.</div>';
   if (r.dudoso) h += '<div class="hint">' + esc(r.plat) + ' no enseña las noches que ya han pasado, y la app vio esta reserva por primera vez cuando ya estaba empezada: puede que entrara antes. Las fechas exactas están en ' + esc(r.plat) + '.</div>';
@@ -425,6 +473,17 @@ function abrirReserva(id) {
     catch (e) { $('#n-msg').innerHTML = '<div class="aviso mal">' + esc(msgError(e)) + '</div>'; b.disabled = false; b.textContent = 'Guardar nota'; }
   };
   $('#n-guardar').onclick = guardarNota;
+  if ($('#t-editar')) $('#t-editar').onclick = () => { $('#t-form').hidden = !$('#t-form').hidden; if (!$('#t-form').hidden) $('#t-tel').focus(); };
+  if ($('#t-guardar')) $('#t-guardar').onclick = async () => {
+    const b = $('#t-guardar'); b.disabled = true; b.textContent = 'Guardando…';
+    try { D = await api('telefono', { id: r.id, tel: $('#t-tel').value }); guardar('nv-datos', D); render(); toast($('#t-tel').value.trim() ? 'Teléfono guardado' : 'Teléfono borrado'); abrirReserva(r.id); }
+    catch (e) { $('#t-msg').innerHTML = '<div class="aviso mal">' + esc(msgError(e)) + '</div>'; b.disabled = false; b.textContent = 'Guardar teléfono'; }
+  };
+  if ($('#p-boton')) $('#p-boton').onclick = async () => {
+    const b = $('#p-boton'); b.disabled = true;
+    try { D = await api('parte', { id: r.id, hecho: !r.parte }); guardar('nv-datos', D); render(); toast(r.parte ? 'Parte desmarcado' : 'Parte marcado como hecho'); abrirReserva(r.id); }
+    catch (e) { $('#p-msg').innerHTML = '<div class="aviso mal">' + esc(msgError(e)) + '</div>'; b.disabled = false; }
+  };
   if ($('#s-separar')) $('#s-separar').onclick = async () => {
     const b = $('#s-separar'), dia = $('#s-dia').value;
     b.disabled = true; b.textContent = 'Separando…';
@@ -540,15 +599,22 @@ function tarjetaFactura(r) {
     '<div class="card-top"><span class="pill">' + esc(canal(r)) + '</span><span class="apt" data-corto="' + esc(nombreCorto(r.apt)) + '">' + esc(r.apt) + '</span>' +
     '<span class="tags"><span class="tag' + (r.factura ? '' : ' nueva') + '">' + esc(estado) + '</span></span></div>' +
     '<div class="fechas">' + esc(fCorta(r.entrada)) + ' → ' + esc(fCorta(r.salida)) + ' <span class="n">· ' + nTxt(noches(r.entrada, r.salida)) + '</span></div>' +
-    '<div class="quien">' + [r.nombre ? esc(r.nombre) : '', r.factura ? esc(r.factura) + ' · ' + eur(r.facturaTotal) : r.importe ? eur(r.importe) : ''].filter(String).join(' · ') + '</div>' +
+    '<div class="quien">' + [r.nombre ? esc(r.nombre) : '', r.factura ? esc(r.factura) + ' · ' + eur(totalVigente(r)) + ((r.rectifs || []).length ? ' (rectificada)' : '') : r.importe ? eur(r.importe) : ''].filter(String).join(' · ') + '</div>' +
     '</button>';
 }
+/* Total de la factura después de sus rectificativas */
+function totalVigente(r) { const l = r.rectifs || []; return l.length ? Number(l[l.length - 1].tn) : Number(r.facturaTotal || 0); }
 
 function renderFacturas() {
   const rs = D.reservas.filter(r => llevaFactura(r) && (filtro === 'todos' || r.apt === filtro))
     .sort((a, b) => b.salida.localeCompare(a.salida));
-  const t = trimestre(D.hoy), delTrim = D.reservas.filter(r => r.factura && r.facturaFecha && trimestre(r.facturaFecha) === t);
-  const cuota = delTrim.reduce((s, r) => s + Number(r.facturaCuota || 0), 0), total = delTrim.reduce((s, r) => s + Number(r.facturaTotal || 0), 0);
+  // IVA del trimestre: facturas y rectificativas con fecha en él (una rectificativa cuenta en su trimestre, con su diferencia)
+  const t = trimestre(D.hoy), delTrim = [];
+  D.reservas.forEach(r => {
+    if (r.factura && r.facturaFecha && trimestre(r.facturaFecha) === t) delTrim.push([Number(r.facturaCuota || 0), Number(r.facturaTotal || 0)]);
+    (r.rectifs || []).forEach(x => { if (x.f && trimestre(x.f) === t) delTrim.push([Number(x.c || 0), Number(x.t || 0)]); });
+  });
+  const cuota = delTrim.reduce((s, x) => s + x[0], 0), total = delTrim.reduce((s, x) => s + x[1], 0);
   let h = '<div class="aviso" style="background:var(--card);border-left-color:var(--accent)"><b>IVA de este trimestre (' + NOMBRE_TRIM[t.slice(-1)] + ')</b>' +
     eur(cuota) + ' de IVA en ' + delTrim.length + (delTrim.length === 1 ? ' factura' : ' facturas') + ' (' + eur(total) + ' cobrados)' +
     '<div class="hint" style="margin-bottom:0">El IVA de las comisiones y los gastos se resta en el libro de facturas, en «Resumen IVA».</div></div>';
@@ -584,6 +650,8 @@ function abrirFactura(id) {
     (r.nombre ? '<div class="dato"><span>Huésped</span><b>' + esc(r.nombre) + '</b></div>' : '') +
     (r.numPlat || r.codigo ? '<div class="dato"><span>Nº reserva</span><b>' + esc(r.numPlat || r.codigo) + '</b></div>' : '') +
     (r.factura ? '<div class="dato"><span>Total</span><b>' + eur(r.facturaTotal) + ' (IVA ' + eur(r.facturaCuota) + ')</b></div>' : '') +
+    (r.rectifs || []).map(x => '<div class="dato"><span>Rectificativa</span><b>' + esc(x.n) + ' · ' + (Number(x.t) > 0 ? '+' : '') + eur(x.t) + '</b></div>').join('') +
+    ((r.rectifs || []).length ? '<div class="dato"><span>Total correcto</span><b>' + eur(totalVigente(r)) + '</b></div>' : '') +
     '</div>';
   const telV = r.tel || '';
   const telHint = !telV && r.tel4 ? 'Acaba en ' + esc(r.tel4) + '. El número completo está en la app de ' + esc(r.plat) + '.' : 'Con el prefijo del país, por ejemplo +34 600 123 456.';
@@ -605,7 +673,9 @@ function abrirFactura(id) {
       '<div class="menu-lista" style="margin-top:14px">' +
       (wa ? '<a class="btn" id="fa-chat" target="_blank" rel="noopener" href="' + esc(wa) + '">1 · Abrir chat de WhatsApp</a>' : '') +
       '<button class="btn prim" id="fa-enviar">' + (wa ? '2 · ' : '') + 'Enviar la factura (PDF)</button>' +
-      '<button class="btn" id="fa-marca">' + (r.facturaEnv ? '↩️ No está enviada' : '✅ Ya la he enviado') + '</button></div>' +
+      '<button class="btn" id="fa-marca">' + (r.facturaEnv ? '↩️ No está enviada' : '✅ Ya la he enviado') + '</button>' +
+      (r.rectifs || []).map(x => '<button class="btn" data-rpdf="' + esc(x.n) + '">📄 Enviar la rectificativa ' + esc(x.n) + ' (PDF)</button>').join('') +
+      '<button class="btn" id="fa-rect">✏️ Corregir o anular esta factura</button></div>' +
       (wa ? '<div class="hint">Primero abre el chat y manda el mensaje; después «Enviar la factura» y elige WhatsApp y el chat del huésped (saldrá el primero).</div>' : '') +
       '<div class="msg" id="fa-msg"></div>' +
       '<div class="acciones"><button class="btn" id="fa-volver">Cerrar</button></div>';
@@ -642,17 +712,18 @@ function abrirFactura(id) {
     try { D = await api('facturaEnviada', { id: r.id, enviada: !r.facturaEnv }); guardar('nv-datos', D); render(); abrirFactura(r.id); }
     catch (e) { err(e); b.disabled = false; }
   };
-  $('#fa-enviar').onclick = async () => {
-    const b = $('#fa-enviar'), txt = b.textContent; b.disabled = true; b.textContent = 'Preparando el PDF…';
+  // Comparte el PDF (la factura o una rectificativa) con el menú del móvil; si no se puede, lo descarga
+  const enviarPdf = async (b, numero) => {
+    const k = numero || r.id, txt = b.textContent; b.disabled = true; b.textContent = 'Preparando el PDF…';
     try {
-      if (!PDFS[r.id]) { const j = await api('pdfFactura', { id: r.id }); PDFS[r.id] = { pdf: j.pdf, archivo: j.archivo }; }
-      const bin = atob(PDFS[r.id].pdf), bytes = new Uint8Array(bin.length);
+      if (!PDFS[k]) { const j = await api('pdfFactura', numero ? { id: r.id, numero } : { id: r.id }); PDFS[k] = { pdf: j.pdf, archivo: j.archivo }; }
+      const bin = atob(PDFS[k].pdf), bytes = new Uint8Array(bin.length);
       for (let i = 0; i < bin.length; i++) bytes[i] = bin.charCodeAt(i);
-      const nombre = 'Factura ' + PDFS[r.id].archivo;
+      const nombre = (numero ? 'Factura rectificativa ' : 'Factura ') + PDFS[k].archivo;
       const file = new File([bytes], nombre, { type: 'application/pdf' });
       if (navigator.canShare && navigator.canShare({ files: [file] })) {
         await navigator.share({ files: [file], title: nombre });
-        if (!r.facturaEnv) { D = await api('facturaEnviada', { id: r.id, enviada: true }); guardar('nv-datos', D); render(); toast('Factura enviada'); }
+        if (!numero && !r.facturaEnv) { D = await api('facturaEnviada', { id: r.id, enviada: true }); guardar('nv-datos', D); render(); toast('Factura enviada'); }
         abrirFactura(r.id);
       } else {
         const a = document.createElement('a'); a.href = URL.createObjectURL(file); a.download = nombre; document.body.appendChild(a); a.click(); a.remove();
@@ -663,6 +734,51 @@ function abrirFactura(id) {
       if (e && e.name === 'AbortError') { b.disabled = false; b.textContent = txt; return; }   // canceló el menú de compartir
       err(e); b.disabled = false; b.textContent = txt;
     }
+  };
+  $('#fa-enviar').onclick = () => enviarPdf($('#fa-enviar'));
+  document.querySelectorAll('[data-rpdf]').forEach(b => { b.onclick = () => enviarPdf(b, b.dataset.rpdf); });
+  $('#fa-rect').onclick = () => abrirRectificar(r);
+}
+
+/* ---------- Factura rectificativa ----------
+ * Una factura hecha no se cambia: se hace otra («rectificativa», serie aparte) que dice qué corrige y por qué. */
+const MOTIVOS_RECT = ['Devolución de todo el importe (anulación)', 'Devolución de una parte del importe', 'El importe estaba mal', 'Los datos del huésped estaban mal'];
+function abrirRectificar(r) {
+  const vig = totalVigente(r);
+  const h = '<div class="hoja-top ' + clase(r) + '"><span class="pill">' + esc(canal(r)) + '</span><span class="apt">' + esc(r.apt) + '</span></div>' +
+    '<h2>✏️ Corregir la factura ' + esc(r.factura) + '</h2>' +
+    '<div class="hint">Una factura ya hecha no se cambia: se hace una <b>factura rectificativa</b> (serie aparte) que dice qué se corrige y por qué. Después hay que enviársela al huésped, como la factura.</div>' +
+    '<label class="campo">Motivo<select id="re-mot"><option value="" selected disabled>Elige el motivo…</option>' + MOTIVOS_RECT.map((m, i) => '<option value="' + i + '">' + esc(m) + '</option>').join('') + '</select></label>' +
+    '<label class="campo">Total correcto de la factura (IVA incluido)<input id="re-tot" inputmode="decimal" autocomplete="off" value="' + esc(String(vig).replace('.', ',')) + '"></label>' +
+    '<div class="hint">Ahora la factura es de ' + eur(vig) + '. Si se devuelve todo, pon 0.</div>' +
+    '<div id="re-huesped" hidden><div class="hint" style="margin-top:14px"><b>Datos del huésped.</b> Lo que dejes vacío se queda como en la factura. Si la factura pasa de ' + LIMITE_SIMPLIFICADA + ' €, hacen falta el nombre, el documento y el domicilio.</div>' +
+    '<label class="campo">Nombre y apellidos<input id="re-nom" autocomplete="off" value="' + esc(r.nombre || '') + '"></label>' +
+    '<label class="campo">DNI, NIE o pasaporte<input id="re-doc" autocomplete="off"></label>' +
+    '<label class="campo">Domicilio (calle, número, ciudad, código postal)<textarea id="re-dom" style="min-height:64px"></textarea></label>' +
+    '<label class="campo">País<input id="re-pais" autocomplete="off"></label></div>' +
+    '<label class="campo">Detalle (opcional, sale en la rectificativa)<input id="re-det" maxlength="120" autocomplete="off" placeholder="Ej.: avería del aire acondicionado"></label>' +
+    '<div class="msg" id="re-msg"></div>' +
+    '<div class="acciones"><button class="btn" id="re-volver">Volver</button><button class="btn prim" id="re-hacer">Hacer la rectificativa</button></div>';
+  abrirHoja(h);
+  const mot = $('#re-mot'), tot = $('#re-tot'), hue = $('#re-huesped');
+  const numTot = () => Number(tot.value.replace(/\.(?=\d{3}(\D|$))/g, '').replace(',', '.'));
+  const ver = () => { hue.hidden = !(mot.value === '3' || numTot() > LIMITE_SIMPLIFICADA); };
+  mot.onchange = () => { if (mot.value === '0') tot.value = '0'; else if (mot.value === '3') tot.value = String(vig).replace('.', ','); ver(); };
+  tot.oninput = ver;
+  $('#re-volver').onclick = () => abrirFactura(r.id);
+  $('#re-hacer').onclick = async () => {
+    if (mot.value === '') { $('#re-msg').innerHTML = '<div class="aviso mal">Elige el motivo.</div>'; return; }
+    const b = $('#re-hacer'); b.disabled = true; b.textContent = 'Haciendo la rectificativa…'; $('#re-msg').innerHTML = '';
+    try {
+      const det = $('#re-det').value.trim();
+      const extra = { id: r.id, total: tot.value, motivo: MOTIVOS_RECT[Number(mot.value)] + (det ? ': ' + det : '') };
+      if (!hue.hidden) Object.assign(extra, { nombre: $('#re-nom').value, doc: $('#re-doc').value, domicilio: $('#re-dom').value, pais: $('#re-pais').value });
+      const j = await api('rectificar', extra);
+      PDFS[j.numero] = { pdf: j.pdf, archivo: j.archivo };
+      if (j.datos) { D = j.datos; guardar('nv-datos', D); render(); }
+      toast('Rectificativa ' + j.numero + ' hecha: ahora envíasela al huésped');
+      abrirFactura(r.id);
+    } catch (e) { $('#re-msg').innerHTML = '<div class="aviso mal">' + esc(msgError(e)) + '</div>'; b.disabled = false; b.textContent = 'Hacer la rectificativa'; }
   };
 }
 
@@ -734,6 +850,15 @@ const TIPOS_REG = {
   motor_ok: ['✅', 'La app vuelve a leer las plataformas'],
   correos_parado: ['⚠️', 'El lector de correos no da señales (aviso enviado)'],
   correos_ok: ['✅', 'El lector de correos vuelve a funcionar'],
+  espacio_parado: ['⚠️', 'El motor se está llenando (aviso enviado)'],
+  espacio_ok: ['✅', 'Vuelve a haber espacio en el motor'],
+  copia: ['💾', 'Copia de seguridad enviada por email'],
+  restaurada: ['💾', 'Se recuperó una copia de seguridad'],
+  telefono: ['📞', 'Guardó el teléfono de un huésped'],
+  telefono_borrado: ['📞', 'Borró el teléfono de un huésped'],
+  parte: ['📋', 'Marcó un parte de viajeros como hecho'],
+  parte_quitado: ['📋', 'Desmarcó un parte de viajeros'],
+  rectificativa: ['🧾', 'Hizo una factura rectificativa'],
   marca_cerrado: ['🔒', 'Marcó unas fechas de Booking como cerradas a mano'],
   marca_reserva: ['✅', 'Confirmó una reserva de Booking'],
   marca_externa: ['📞', 'Marcó unas fechas de Booking como reserva externa'],
@@ -842,6 +967,7 @@ document.addEventListener('click', e => {
 });
 $('#velo').addEventListener('click', e => { if (e.target.id === 'velo') cerrarHoja(); });
 $('#btnSync').onclick = sincronizar;
+$('#buscar').addEventListener('input', e => { busqueda = e.target.value; if (D && tab === 'proximas') { renderProximas(); window.scrollTo(0, 0); } });
 $('#btnMenu').onclick = abrirMenu;
 
 function iniciar() {
