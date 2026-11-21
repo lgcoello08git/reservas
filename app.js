@@ -197,8 +197,18 @@ function render() {
   if (tab === 'proximas') renderProximas(); else if (tab === 'ocupacion') renderOcupacion(); else if (tab === 'facturas') renderFacturas(); else renderCalendario();
 }
 
+/* Horas desde un «aaaa-mm-dd hh:mm:ss» del motor (0 si no hay fecha) y cómo decirlo */
+function horasDesde(s) { return s ? (Date.now() - new Date(s.replace(' ', 'T')).getTime()) / 36e5 : 0; }
+function desdeTxt(s) { const d = s.slice(0, 10); return (d === hoyLocal() ? 'las ' : 'el ' + fDia(d) + ' a las ') + s.slice(11, 16); }
+
 function renderAvisos() {
   const h = [];
+  // El motor no ha podido leer las plataformas hace rato: lo que se ve puede ser viejo
+  if (!sinConexion && horasDesde(D.ultimaSync) >= 1) h.push('<div class="aviso mal"><b>⚠️ Puede que no esté al día</b>La app no ha podido comprobar Booking, Airbnb y Vrbo desde ' + esc(desdeTxt(D.ultimaSync)) +
+    '. Toca ↻ para probar ahora' + (D.admin ? '. Si sigue igual, mira «Ejecuciones» del motor en script.google.com.' : '. Si sigue igual, avisa al administrador.') + '</div>');
+  // El lector de correos no da señales (solo lo ve el administrador, que es quien puede arreglarlo)
+  if (D.admin && horasDesde(D.correosVivo) >= 3) h.push('<div class="aviso"><b>El lector de correos no da señales</b>Desde ' + esc(desdeTxt(D.correosVivo)) +
+    '. Los cierres nuevos de Booking se quedan «Esperando el correo». Mira «Ejecuciones» del motor de facturas (cuenta del negocio).</div>');
   const porId = {}; D.reservas.forEach(r => { porId[r.id] = r; });
   D.solapes.forEach(p => {
     const a = porId[p[0]], b = porId[p[1]];
@@ -720,6 +730,10 @@ const TIPOS_REG = {
   clave_facturas: ['🚫', 'Intento de pasar datos de facturas sin la clave'],
   calendario_mal: ['⚠️', 'Un calendario no se puede leer (aviso enviado)'],
   calendario_ok: ['✅', 'Calendario arreglado'],
+  motor_parado: ['⚠️', 'La app no lee las plataformas (aviso enviado)'],
+  motor_ok: ['✅', 'La app vuelve a leer las plataformas'],
+  correos_parado: ['⚠️', 'El lector de correos no da señales (aviso enviado)'],
+  correos_ok: ['✅', 'El lector de correos vuelve a funcionar'],
   marca_cerrado: ['🔒', 'Marcó unas fechas de Booking como cerradas a mano'],
   marca_reserva: ['✅', 'Confirmó una reserva de Booking'],
   marca_externa: ['📞', 'Marcó unas fechas de Booking como reserva externa'],
@@ -764,7 +778,7 @@ async function abrirRegistro(recargar) {
     const dd = diaReg(x.t);
     if (dd !== dia) { if (dia) h += '</div>'; h += '<div class="grupo">' + esc(dd) + '</div><div class="detalle" style="margin-top:0;padding:4px 14px">'; dia = dd; }
     const tp = TIPOS_REG[x.k] || ['•', x.k];
-    const alerta = /fallo|bloqueado|no_autorizado|expulsado|token_invalido|sin_permiso|peticion_rara|limite|caducado$|calendario_mal/.test(x.k);
+    const alerta = /fallo|bloqueado|no_autorizado|expulsado|token_invalido|sin_permiso|peticion_rara|limite|caducado$|calendario_mal|_parado$/.test(x.k);
     h += '<div class="dato" style="align-items:flex-start"><span style="min-width:52px">' + esc(x.t.slice(11, 16)) + '</span><div style="flex:1;min-width:0">' +
       '<b' + (alerta ? ' style="color:var(--bad)"' : '') + '>' + tp[0] + ' ' + esc(tp[1]) + '</b>' +
       '<div style="font-size:14px;color:var(--muted);overflow-wrap:anywhere">' + esc(x.e || 'desconocido') + (x.d ? ' · ' + esc(x.d) : '') + '</div></div></div>';
