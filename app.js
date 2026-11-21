@@ -71,15 +71,19 @@ window.addEventListener('resize', () => { if (window.innerWidth !== anchoAntes) 
 function nTxt(n) { return n + (n === 1 ? ' noche' : ' noches'); }
 function hoyLocal() { const d = new Date(); return d.getFullYear() + '-' + String(d.getMonth() + 1).padStart(2, '0') + '-' + String(d.getDate()).padStart(2, '0'); }
 function esc(s) { return String(s == null ? '' : s).replace(/[&<>"']/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c])); }
-// Un cierre: bloqueo de la plataforma o fechas de Booking marcadas como «cerradas a mano»
-function esCierre(r) { return r.tipo === 'Bloqueo' || r.marca === 'cerrado'; }
+// No es una reserva: bloqueo de la plataforma, fechas de Booking cerradas a mano o reserva cancelada según el correo
+function esCierre(r) { return r.tipo === 'Bloqueo' || r.marca === 'cerrado' || !!r.cancelCorreo; }
+// Cierre de Booking que aún no se sabe qué es (el motor lo aclara con los correos; ver r.aclarar)
+function sinAclarar(r) { return !!r.aclarar && !r.marca && !r.cancelCorreo; }
+function autoMarca(r) { return !r.marcaPor || r.marcaPor.indexOf('auto') === 0 || r.marcaPor === 'correo de Smartbox' || (r.marcaPor === 'reparación' && r.marca === 'cerrado'); }
 function clase(r) { if (esCierre(r)) return 'p-Bloqueo'; if (r.marca === 'externa') return 'p-Directa'; if (r.marca === 'smartbox') return 'p-Smartbox'; return PLATS.indexOf(r.plat) >= 0 ? 'p-' + r.plat : 'p-Otra'; }
 // Canal que se muestra: una reserva externa deja de ser «Booking»
 function canal(r) { return r.marca === 'externa' ? 'Externa' : r.marca === 'smartbox' ? 'Smartbox' : r.plat; }
 function claseCanal(x) { return x === 'Externa' ? 'p-Directa' : x === 'Smartbox' ? 'p-Smartbox' : PLATS.indexOf(x) >= 0 ? 'p-' + x : 'p-Otra'; }
-function etiqueta(r) { return r.marca === 'cerrado' ? 'Cerrado' : r.marca === 'externa' ? 'Reserva externa' : r.marca === 'smartbox' ? 'Smartbox' : r.tipo === 'Bloqueo' ? 'Bloqueado · ' + r.plat : r.plat; }
+function etiqueta(r) { return r.cancelCorreo ? 'Cancelada · ' + canal(r) : r.marca === 'cerrado' ? 'Cerrado' : r.marca === 'externa' ? 'Reserva externa' : r.marca === 'smartbox' ? 'Smartbox' : r.tipo === 'Bloqueo' ? 'Bloqueado · ' + r.plat : sinAclarar(r) ? 'Booking · por confirmar' : r.plat; }
+function pillTxt(r) { return r.cancelCorreo ? '❌ Cancelada' : r.marca === 'cerrado' ? '🔒 Cerrado' : r.marca === 'externa' ? 'Externa' : r.marca === 'smartbox' ? '🎁 Smartbox' : esCierre(r) ? '🔒 ' + r.plat : sinAclarar(r) ? '⏳ Booking' : r.plat; }
 // Booking no distingue en su calendario entre una reserva y unas fechas cerradas a mano
-function porAclarar(r) { return r.plat === 'Booking' && r.tipo !== 'Bloqueo' && !r.marca; }
+function porAclarar(r) { return r.plat === 'Booking' && r.tipo !== 'Bloqueo' && !r.marca && !r.cancelCorreo; }
 function enChoque(id) { return D.solapes.some(p => p[0] === id || p[1] === id); }
 function hace(s) {
   if (!s) return 'Aún no se ha comprobado';
@@ -230,14 +234,19 @@ function tarjeta(r) {
   const datos = [];
   if (r.nombre) datos.push(esc(r.nombre));
   if (r.tel4) datos.push('📞 …' + esc(r.tel4));
+  if (r.numPlat && !esCierre(r)) datos.push('nº ' + esc(r.numPlat));
   return '<button class="card ' + clase(r) + (enChoque(r.id) ? ' choque' : '') + '" data-id="' + esc(r.id) + '">' +
-    '<div class="card-top"><span class="pill">' + esc(r.marca === 'cerrado' ? '🔒 Cerrado' : r.marca === 'externa' ? 'Externa' : r.marca === 'smartbox' ? '🎁 Smartbox' : esCierre(r) ? '🔒 ' + r.plat : r.plat) + '</span><span class="apt" data-corto="' + esc(nombreCorto(r.apt)) + '">' + esc(r.apt) + '</span>' +
+    '<div class="card-top"><span class="pill">' + esc(pillTxt(r)) + '</span><span class="apt" data-corto="' + esc(nombreCorto(r.apt)) + '">' + esc(r.apt) + '</span>' +
     ((r.nueva || tag) ? '<span class="tags">' + (r.nueva ? '<span class="tag nueva">Nueva</span>' : '') + (tag ? '<span class="tag">' + esc(tag) + '</span>' : '') + '</span>' : '') + '</div>' +
     (dud ? '<div class="fechas">Hasta ' + esc(fCorta(r.salida)) + ' <span class="n">· entró hoy o antes</span></div>'
       : '<div class="fechas">' + esc(fCorta(r.entrada)) + ' → ' + esc(fCorta(r.salida)) + ' <span class="n">· ' + nTxt(noches(r.entrada, r.salida)) + '</span></div>') +
     (datos.length ? '<div class="quien">' + datos.join(' · ') + '</div>' : '') +
     (r.notas ? '<div class="nota">📝 ' + esc(r.notas) + '</div>' : '') +
-    (r.marca === 'cerrado' ? '<div class="quien vacio" style="font-size:13px">Fechas cerradas a mano (no es reserva)</div>' : '') +
+    (r.cancelCorreo ? '<div class="quien vacio" style="font-size:13px;color:var(--bad)">Cancelada (aviso del ' + esc(fDia(r.cancelCorreo)) + '). Si no hay nadie, abre las fechas.</div>'
+      : r.marca === 'cerrado' ? '<div class="quien vacio" style="font-size:13px">Fechas cerradas a mano (no es reserva)</div>'
+      : r.aclarar === 'ambiguo' && !r.marca ? '<div class="quien vacio" style="font-size:13px">¿Reserva o cerrado? Tócala para aclararlo</div>'
+      : (r.aclarar === 'antiguo' || r.aclarar === 'quitada') && !r.marca ? '<div class="quien vacio" style="font-size:13px">Sin aclarar: ¿reserva o cerrado?</div>'
+      : r.aclarar === 'pendiente' && !r.marca ? '<div class="quien vacio" style="font-size:13px">Esperando el correo de Booking</div>' : '') +
     (enChoque(r.id) ? '<div class="alerta-txt" style="color:var(--bad)">🚨 Doble reserva: coincide con otra</div>' : '') +
     '</button>';
 }
@@ -325,6 +334,23 @@ function miniTarjeta(r, txt) {
     '<span class="q">' + esc(q) + '<small>' + esc(txt) + ' · ' + esc(fCorta(r.entrada)) + ' → ' + esc(fCorta(r.salida)) + '</small></span></button>';
 }
 
+/* Por qué la app dice lo que dice de un cierre de Booking */
+function explicaBooking(r) {
+  const m = r.marcaPor || '';
+  if (r.marca && !autoMarca(r)) return 'El calendario de Booking marca igual una reserva y unas fechas cerradas a mano. Esto lo marcó una persona.';
+  if (m === 'auto:correo de Booking') return '✉️ Llegó el correo de Booking «Nueva reserva»' + (r.numPlat ? ' (nº ' + esc(r.numPlat) + ')' : '') + ' para esta fecha: es una reserva de Booking.';
+  if (m === 'auto:correo de Smartbox' || m === 'correo de Smartbox') return '✉️ Llegó el correo de Smartbox con estas fechas: es una reserva de Smartbox.';
+  if (m === 'reparación') return 'Salía rayado en las capturas del calendario de Booking: cerrado a mano (o una reserva de otra plataforma).';
+  if (m === 'auto:sin correo') return 'No llegó ningún correo de reserva de Booking ni de Smartbox para estas fechas: son fechas cerradas a mano.';
+  if (r.aclarar === 'pendiente') return '⏳ Acaba de aparecer en el calendario de Booking. Si en unas horas no llega el correo de «Nueva reserva», la app lo dará por cerrado a mano.';
+  if (r.aclarar === 'ambiguo') return /^Smartbox/.test(r.ambiguo || '')
+    ? '❓ Hay un correo de Smartbox para estas fechas (' + esc(r.ambiguo.replace(/^Smartbox /, '')) + '), pero no dice de qué apartamento es y están cerradas en los dos. Márcalo como «Es de Smartbox» en el que sea.'
+    : '❓ Hay un correo de reserva de Booking para este día (' + esc(r.ambiguo) + '), pero Booking no dice de qué apartamento es y hay cierres en los dos. Míralo en Booking y márcalo.';
+  if (r.aclarar === 'quitada') return 'Se quitó la marca a mano, así que la app ya no lo decide sola. Márcalo cuando sepas qué es.';
+  if (r.aclarar === 'antiguo') return 'Es de antes de que los avisos de Booking llegaran al correo del negocio, así que la app no puede saber qué es. Míralo en Booking (amarillo = reserva, rayado = cerrado) y márcalo.';
+  return 'El calendario de Booking marca igual una reserva y unas fechas cerradas a mano. Si no es lo que dice la app, márcalo aquí.';
+}
+
 /* ---------- Detalle de una reserva (solo consulta) ---------- */
 function abrirReserva(id) {
   const r = D.reservas.find(x => x.id === id);
@@ -338,23 +364,27 @@ function abrirReserva(id) {
       : '<div class="dato"><span>Entrada</span><b>' + esc(fLarga(r.entrada)) + '</b></div>') +
     '<div class="dato"><span>Salida</span><b>' + esc(fLarga(r.salida)) + '</b></div>' +
     '<div class="dato"><span>Noches</span><b>' + (r.dudoso ? 'al menos ' + n : n) + '</b></div>' +
-    (r.marca === 'cerrado' ? '<div class="dato"><span>Qué es</span><b>Fechas cerradas a mano</b></div>'
+    (r.cancelCorreo ? '<div class="dato"><span>Qué es</span><b>Reserva cancelada (aviso del ' + esc(fDia(r.cancelCorreo)) + ')</b></div>'
+      : r.marca === 'cerrado' ? '<div class="dato"><span>Qué es</span><b>Fechas cerradas a mano</b></div>'
       : r.marca === 'externa' ? '<div class="dato"><span>Qué es</span><b>Reserva externa (no es de Booking)</b></div>'
       : r.marca === 'smartbox' ? '<div class="dato"><span>Qué es</span><b>Reserva de Smartbox (cerrada en Booking)</b></div>'
       : '<div class="dato"><span>Plataforma</span><b>' + esc(r.plat) + '</b></div>') +
     (r.nombre ? '<div class="dato"><span>Huésped</span><b>' + esc(r.nombre) + '</b></div>' : '') +
     (r.tel4 ? '<div class="dato"><span>Teléfono</span><b>acaba en ' + esc(r.tel4) + '</b></div>' : '') +
     (r.codigo ? '<div class="dato"><span>Código</span><b>' + esc(r.codigo) + '</b></div>' : '') +
+    (r.numPlat && r.numPlat !== r.codigo ? '<div class="dato"><span>Nº de reserva</span><b>' + esc(r.numPlat) + '</b></div>' : '') +
     (r.factura ? '<div class="dato"><span>Factura</span><b>' + esc(r.factura) + (r.facturaEnv ? ' · enviada' : ' · sin enviar') + '</b></div>' : '') +
     '</div>';
   if (enChoque(r.id)) h += '<div class="aviso" style="margin-top:12px"><b>⚠️ Se solapa con otra reserva</b>Revísalo en las plataformas.</div>';
+  if (r.cancelCorreo) h += '<div class="aviso" style="margin-top:12px"><b>❌ Cancelada</b>' + esc(canal(r)) + ' avisó por correo de que esta reserva se ha cancelado, pero el calendario aún tiene esas fechas cerradas. Si no va a venir nadie, ábrelas en ' + esc(canal(r) === 'Smartbox' ? 'Booking (y en Airbnb si también las cerraste)' : r.plat) + '.</div>';
   if (r.dudoso) h += '<div class="hint">' + esc(r.plat) + ' no enseña las noches que ya han pasado, y la app vio esta reserva por primera vez cuando ya estaba empezada: puede que entrara antes. Las fechas exactas están en ' + esc(r.plat) + '.</div>';
   if (r.plat === 'Booking' && r.tipo !== 'Bloqueo') {
     const quienM = r.marcaPor ? (r.marcaPor === SES.email ? 'ti' : r.marcaPor) : '';
     h += '<div class="detalle" style="margin-top:12px"><h3>¿Qué es esto?</h3>' +
-      '<div class="hint" style="margin-top:0">El calendario de Booking marca igual una reserva y unas fechas cerradas a mano. La app lo trata como reserva de Booking; si no lo es, márcalo aquí.</div>' +
+      '<div class="hint" style="margin-top:0">' + explicaBooking(r) + '</div>' +
       '<div class="seg"><button class="' + (r.marca === 'reserva' ? 'on' : '') + '" data-marca="reserva">✅ Es una reserva de Booking</button><button class="' + (r.marca === 'externa' ? 'on' : '') + '" data-marca="externa">📞 Es una reserva externa</button><button class="' + (r.marca === 'smartbox' ? 'on' : '') + '" data-marca="smartbox">🎁 Es de Smartbox</button><button class="' + (r.marca === 'cerrado' ? 'on' : '') + '" data-marca="cerrado">🔒 Lo cerré yo</button></div>' +
-      (r.marca ? '<div class="hint">Marcado por ' + esc(quienM) + '. Toca otra vez para quitarlo.</div>' : '') +
+      (r.marca && !autoMarca(r) ? '<div class="hint">Marcado por ' + esc(quienM) + '. Toca otra vez para quitarlo.</div>' : '') +
+      (r.marca && autoMarca(r) ? '<div class="hint">Lo ha decidido la app. Si no es así, toca el botón correcto: lo que marques tú manda siempre.</div>' : '') +
       (noches(r.entrada, r.salida) > 1
         ? '<div class="hint" style="margin-top:14px"><b>¿Son dos cosas seguidas?</b> Booking junta en un bloque una reserva y unos días cerrados. Elige dónde empieza la segunda parte y sepáralas; luego marca cada una.</div>' +
           '<div class="enlaces"><select id="s-dia" class="btn" style="flex:2 1 60%">' +
@@ -363,7 +393,7 @@ function abrirReserva(id) {
         : '') +
       '<div class="msg" id="m-marca"></div></div>';
   }
-  if (r.plat === 'Booking' && !r.marca) h += '<div class="hint">Booking no comparte el nombre del huésped por calendario: los datos están en la app de Booking.</div>';
+  if (r.plat === 'Booking' && r.marca === 'reserva' && !r.nombre) h += '<div class="hint">Booking no manda el nombre del huésped ni por calendario ni por correo: está en la app de Booking' + (r.numPlat ? ' (reserva nº ' + esc(r.numPlat) + ')' : '') + '.</div>';
   // Nota privada: se guarda en el motor, nunca en la plataforma
   const quien = r.notaPor ? (r.notaPor === SES.email ? 'ti' : r.notaPor) : '';
   h += '<label class="campo">📝 Nota privada (solo la veis vosotros)<textarea id="n-texto" maxlength="1000" placeholder="Ej.: llegan a las 23h, traen cuna, ya pagado…">' + esc(r.notas || '') + '</textarea></label>' +
@@ -445,18 +475,19 @@ function renderOcupacion() {
   apts.forEach(a => {
     const desdeDatos = desdeDe(a);
     const porPlat = {}, reservasPlat = {};
-    let ocup = 0, bloq = 0, sinDatos = 0;
+    let ocup = 0, bloq = 0, sinDatos = 0, dudas = 0;
     for (let i = 0; i < dias; i++) {
       const d = sumar(primero, i);
       if (d < desdeDatos) { sinDatos++; continue; }
       const aqui = D.reservas.filter(r => r.apt === a && r.entrada <= d && d < r.salida);
-      const real = aqui.find(r => !esCierre(r));
+      const real = aqui.find(r => !esCierre(r) && !sinAclarar(r));
       if (real) { ocup++; porPlat[canal(real)] = (porPlat[canal(real)] || 0) + 1; }
+      else if (aqui.some(sinAclarar)) dudas++;
       else if (aqui.length) bloq++;
     }
     const iniCuenta = desdeDatos > primero ? desdeDatos : primero;
-    D.reservas.forEach(r => { if (r.apt === a && !esCierre(r) && r.entrada < sumar(primero, dias) && r.salida > iniCuenta) reservasPlat[canal(r)] = (reservasPlat[canal(r)] || 0) + 1; });
-    const base = dias - sinDatos, libres = base - ocup - bloq;
+    D.reservas.forEach(r => { if (r.apt === a && !esCierre(r) && !sinAclarar(r) && r.entrada < sumar(primero, dias) && r.salida > iniCuenta) reservasPlat[canal(r)] = (reservasPlat[canal(r)] || 0) + 1; });
+    const base = dias - sinDatos, libres = base - ocup - bloq - dudas;
     const pct = base ? Math.round(ocup * 100 / base) : 0;
     tot.ocup += ocup; tot.total += base;
     if (!base) {
@@ -470,6 +501,7 @@ function renderOcupacion() {
       (bloq ? '<i class="p-Bloqueo" style="width:' + (bloq * 100 / (base || 1)) + '%"></i>' : '') + '</div>' +
       Object.keys(porPlat).map(x => '<div class="dato ' + claseCanal(x) + '"><span><i class="punto"></i>' + esc(x) + '</span><b>' + nTxt(porPlat[x]) + ' · ' + reservasPlat[x] + (reservasPlat[x] === 1 ? ' reserva' : ' reservas') + '</b></div>').join('') +
       (bloq ? '<div class="dato p-Bloqueo"><span><i class="punto"></i>Bloqueadas</span><b>' + nTxt(bloq) + '</b></div>' : '') +
+      (dudas ? '<div class="dato"><span><i class="punto" style="background:repeating-linear-gradient(45deg,var(--line),var(--line) 3px,transparent 3px,transparent 6px);border:1px solid var(--line)"></i>Booking sin aclarar</span><b>' + nTxt(dudas) + '</b></div>' : '') +
       '<div class="dato"><span><i class="punto" style="background:var(--line)"></i>Libres</span><b>' + nTxt(libres) + '</b></div></div>';
   });
   if (apts.length > 1 && tot.total) h += '<div class="hint" style="text-align:center">Los dos apartamentos: <b>' + Math.round(tot.ocup * 100 / tot.total) + '%</b> de ocupación</div>';
@@ -691,6 +723,12 @@ const TIPOS_REG = {
   marca_smartbox: ['🎁', 'Marcó unas fechas de Booking como reserva de Smartbox'],
   separado: ['✂️', 'Separó un bloque de Booking en dos'],
   marca_quitada: ['↩️', 'Quitó una marca de Booking'],
+  auto_reserva: ['✉️', 'Reserva de Booking (por su correo)'],
+  auto_smartbox: ['🎁', 'Reserva de Smartbox (por su correo)'],
+  auto_cerrado: ['🔒', 'Cerrado a mano (no llegó correo de reserva)'],
+  auto_cancelada: ['❌', 'Cancelada (por correo)'],
+  auto_ampliada: ['➕', 'Reserva de Booking ampliada (por correo)'],
+  auto: ['🤖', 'Cambios automáticos'],
 };
 let REG = null, regFiltro = 'todos';
 function diaReg(t) {
