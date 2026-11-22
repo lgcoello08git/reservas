@@ -211,6 +211,7 @@ function render() {
   $('#chips').innerHTML = ch.map(a => '<button class="chip' + (a === filtro ? ' on' : '') + '" data-filtro="' + esc(a) + '">' + (a === 'todos' ? 'Los dos' : esc(a)) + '</button>').join('');
   $('#buscador').hidden = tab !== 'proximas';
   if (tab === 'proximas') renderProximas(); else if (tab === 'ocupacion') renderOcupacion(); else if (tab === 'facturas') renderFacturas(); else renderCalendario();
+  ofrecerTutorial();
 }
 
 /* Horas desde un «aaaa-mm-dd hh:mm:ss» del motor (0 si no hay fecha) y cómo decirlo */
@@ -788,7 +789,8 @@ function renderFacturas() {
     (r.rectifs || []).forEach(x => { if (x.f && trimestre(x.f) === t) delTrim.push([Number(x.c || 0), Number(x.t || 0)]); });
   });
   const cuota = delTrim.reduce((s, x) => s + x[0], 0), total = delTrim.reduce((s, x) => s + x[1], 0);
-  let h = '<div class="aviso" style="background:var(--card);border-left-color:var(--accent)"><b>IVA de este trimestre (' + NOMBRE_TRIM[t.slice(-1)] + ')</b>' +
+  let h = '<button class="btn tuto-ayuda-fila" data-accion="tuto" data-tema="facturas">❓ ¿Cómo se hacen las facturas?</button>' +
+    '<div class="aviso" style="background:var(--card);border-left-color:var(--accent)"><b>IVA de este trimestre (' + NOMBRE_TRIM[t.slice(-1)] + ')</b>' +
     eur(cuota) + ' de IVA en ' + delTrim.length + (delTrim.length === 1 ? ' factura' : ' facturas') + ' (' + eur(total) + ' cobrados)' +
     '<div class="hint" style="margin-bottom:0">El IVA de las comisiones y los gastos se resta en el libro de facturas, en «Resumen IVA».</div></div>';
   const grupos = [
@@ -839,7 +841,8 @@ function abrirFactura(id) {
       '<label class="campo">Domicilio (calle, número, ciudad, código postal)<textarea id="fa-dom" style="min-height:64px"></textarea></label>' +
       '<label class="campo">País<input id="fa-pais" autocomplete="off" placeholder="España"></label></div>' +
       '<div class="msg" id="fa-msg"></div>' +
-      '<div class="acciones"><button class="btn" id="fa-volver">Cerrar</button><button class="btn prim" id="fa-hacer">Hacer factura</button></div>';
+      '<div class="acciones"><button class="btn" id="fa-volver">Cerrar</button><button class="btn prim" id="fa-hacer">Hacer factura</button></div>' +
+      '<button class="btn tuto-ayuda-fila" style="margin-top:12px" data-accion="tuto" data-tema="facturas">❓ Ayuda con las facturas</button>';
   } else {
     const wa = telV ? 'https://wa.me/' + telV.replace(/\D/g, '') + '?text=' + encodeURIComponent('Hola' + (r.nombre ? ' ' + r.nombre.split(' ')[0] : '') + ', gracias por alojarse en Apartamentos Nuncio Viejo. Le envío la factura de su estancia.\nHello, thank you for staying with us. Here is your invoice.') : '';
     h += (telV ? '' : '<label class="campo">Teléfono del huésped (para WhatsApp)<input id="fa-tel" inputmode="tel" autocomplete="off"></label><div class="hint">' + telHint + '</div><div class="enlaces"><button class="btn" id="fa-guardatel">Guardar teléfono</button></div>') +
@@ -851,7 +854,8 @@ function abrirFactura(id) {
       '<button class="btn" id="fa-rect">✏️ Corregir o anular esta factura</button></div>' +
       (wa ? '<div class="hint">Primero abre el chat y manda el mensaje; después «Enviar la factura» y elige WhatsApp y el chat del huésped (saldrá el primero).</div>' : '') +
       '<div class="msg" id="fa-msg"></div>' +
-      '<div class="acciones"><button class="btn" id="fa-volver">Cerrar</button></div>';
+      '<div class="acciones"><button class="btn" id="fa-volver">Cerrar</button></div>' +
+      '<button class="btn tuto-ayuda-fila" style="margin-top:12px" data-accion="tuto" data-tema="facturas">❓ Ayuda con las facturas</button>';
   }
   abrirHoja(h);
   const err = e => { $('#fa-msg').innerHTML = '<div class="aviso mal">' + esc(msgError(e)) + '</div>'; };
@@ -959,11 +963,12 @@ function abrirRectificar(r) {
 function abrirMenu() {
   let h = '<h2>Menú</h2><div class="hint">Has entrado como <b>' + esc(SES.email) + '</b></div><div class="menu-lista">';
   if (SES.admin) h += '<button class="btn" id="m-cal">Calendarios de las plataformas</button><button class="btn" id="m-disp">Dispositivos conectados</button><button class="btn" id="m-reg">Registro de actividad</button>';
-  h += '<button class="btn" id="m-bienv">👋 Mensaje de bienvenida</button><button class="btn peligro" id="m-salir">Cerrar sesión en este móvil</button><button class="btn prim" id="m-cerrar">Volver</button></div><div class="msg" id="m-msg"></div>';
+  h += '<button class="btn" id="m-ayuda">❓ Ayuda: cómo funciona la app</button><button class="btn" id="m-bienv">👋 Mensaje de bienvenida</button><button class="btn peligro" id="m-salir">Cerrar sesión en este móvil</button><button class="btn prim" id="m-cerrar">Volver</button></div><div class="msg" id="m-msg"></div>';
   abrirHoja(h);
   if (SES.admin) { $('#m-cal').onclick = abrirCalendarios; $('#m-disp').onclick = abrirDispositivos; $('#m-reg').onclick = () => abrirRegistro(); }
   $('#m-cerrar').onclick = cerrarHoja;
   $('#m-bienv').onclick = () => abrirDatosBienvenida();
+  $('#m-ayuda').onclick = () => { cerrarHoja(); abrirTutorial(); };
   $('#m-salir').onclick = async () => { try { await llamar({ accion: 'salir', token: SES.token }); } catch (e) { /* nada */ } salirLocal(); };
 }
 
@@ -1134,11 +1139,384 @@ window.addEventListener('beforeinstallprompt', e => {
 window.addEventListener('appinstalled', () => { $('#instalar').innerHTML = ''; });
 if ('serviceWorker' in navigator) navigator.serviceWorker.register('sw.js').catch(() => {});
 
+/* ---------- Ayuda: tutorial paso a paso (v23) ----------
+ * Botón «❓ Ayuda» de la cabecera. Temas con pasos cortos, letra grande y un dibujo de la pantalla
+ * (con datos inventados) que señala dónde tocar. «🔊 Léemelo» lo lee en voz alta. Incluye una práctica
+ * de factura de mentira: no llama al motor, no gasta número y no envía nada.
+ * Solo se guarda en este móvil (localStorage «nv-tuto») si ya se ofreció y qué temas se han visto. */
+const TUTO_K = 'nv-tuto';
+const QUIEN_AYUDA = 'Luis';   // a quién llamar si algo no cuadra
+let tuto = null;              // { cap, paso, seguido } mientras está abierta
+let tutoOfrecido = false, tutoVoz = false;
+const VOZ = window.speechSynthesis && window.SpeechSynthesisUtterance ? window.speechSynthesis : null;
+
+const SVG_SYNC = '<svg viewBox="0 0 24 24" fill="none" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M20 11a8 8 0 0 0-14.9-3.9M4 4v4h4"/><path d="M4 13a8 8 0 0 0 14.9 3.9M20 20v-4h-4"/></svg>';
+const SVG_MENU = '<svg viewBox="0 0 24 24" fill="none" stroke-width="2.2" stroke-linecap="round"><path d="M4 7h16M4 12h16M4 17h16"/></svg>';
+
+/* Piezas de los dibujos: las mismas clases que la app, pero sin datos de verdad y sin poder tocarse */
+const F_ = (si, cls) => (si ? ' tuto-foco' : '') + (cls ? ' ' + cls : '');
+const dDemo = (h, cls) => '<div class="tuto-demo' + (cls ? ' ' + cls : '') + '" aria-hidden="true">' + h + '</div>';
+const dCab = foco => '<div class="top"><div class="tit"><h1>Reservas</h1><p class="sub' + F_(foco === 'sub') + '">Comprobado hace 5 min</p></div>' +
+  '<span class="ayuda-btn' + F_(foco === 'ayuda') + '">❓ Ayuda</span><span class="icon-btn' + F_(foco === 'sync') + '">' + SVG_SYNC + '</span>' +
+  '<span class="icon-btn' + F_(foco === 'menu') + '">' + SVG_MENU + '</span></div>';
+const dTabs = (on, foco) => '<div class="tabs' + F_(foco === 'tabs') + '">' + ['Próximas', 'Calendario', 'Ocupación', 'Facturas']
+  .map(t => '<span class="tab' + (t === on ? ' on' : '') + F_(foco === t) + '">' + t + '</span>').join('') + '</div>';
+const dChips = foco => '<div class="chips' + F_(foco) + '"><span class="chip on">Los dos</span><span class="chip">Vistas a la Catedral</span><span class="chip">Patio Toledano</span></div>';
+const dGrupo = t => '<div class="grupo">' + t + '</div>';
+const dCard = o => '<div class="card p-' + (o.p || 'Airbnb') + F_(o.foco) + '"><div class="card-top"><span class="pill' + F_(o.fpill) + '">' + (o.pill || o.p || 'Airbnb') + '</span>' +
+  '<span class="apt">' + (o.apt || 'Vistas a la Catedral') + '</span>' + (o.tag ? '<span class="tags"><span class="tag' + (o.tagN ? ' nueva' : '') + F_(o.ftag) + '">' + o.tag + '</span></span>' : '') + '</div>' +
+  '<div class="fechas' + F_(o.ffechas) + '">' + (o.f || 'vie 4 dic → dom 6 dic') + ' <span class="n">· ' + (o.n || '2 noches') + '</span></div>' +
+  (o.quien ? '<div class="quien' + F_(o.fquien) + '">' + o.quien + '</div>' : '') + (o.extra || '') + '</div>';
+const dTarea = (txt, sub, hecha, foco) => '<div class="tarea' + (hecha ? ' hecha' : '') + F_(foco) + '"><span class="caja">✓</span><span class="t"><span class="tt">' + txt + '</span><small>' + sub + '</small></span></div>';
+const dAviso = (mal, b, txt, foco) => '<div class="aviso' + (mal ? ' mal' : '') + F_(foco) + '"><b>' + b + '</b>' + txt + '</div>';
+const dBtn = (txt, prim, foco) => '<span class="btn' + (prim ? ' prim' : '') + F_(foco) + '">' + txt + '</span>';
+const dDato = (k, v, foco) => '<div class="dato' + F_(foco) + '"><span>' + k + '</span><b>' + v + '</b></div>';
+const dBuscar = foco => '<div class="buscador"><span class="falso-input' + F_(foco) + '">🔍 Buscar huésped, nº de reserva o teléfono</span></div>';
+const dToast = foco => '<div class="tuto-toast' + F_(foco) + '"><span>✅ Marcado como hecho</span><u>Deshacer</u></div>';
+const dFicha = (cuerpo, cls) => '<div class="tuto-hoja' + (cls ? ' ' + cls : '') + '">' + cuerpo + '</div>';
+const dCampo = (lab, val, foco, ph) => '<div class="campo' + F_(foco) + '">' + lab + '<span class="falso-input' + (val ? '' : ' ph') + '">' + (val || ph || '') + '</span></div>';
+const tarjetaEjemplo = (foco) => dCard({ p: 'Airbnb', apt: 'Vistas a la Catedral', tag: 'Entra hoy', f: 'vie 4 dic → dom 6 dic', n: '2 noches', quien: 'María García · 📞 …4567', foco });
+const fichaFactura = foco => dFicha('<div class="hoja-top p-Airbnb"><span class="pill">Airbnb</span><span class="apt">Vistas a la Catedral</span></div><h2>🧾 Hacer la factura</h2>' +
+  dCampo('Importe que pagó el huésped (IVA incluido)', '255,00', foco === 'imp') +
+  (foco === 'imp' ? '<div class="hint">De Airbnb: «Precio de la habitación por X noches» (sin la comisión de Airbnb).</div>' : '') +
+  '<div class="acciones">' + dBtn('Cerrar') + dBtn('Hacer factura', true, foco === 'hacer') + '</div>');
+const fichaHecha = foco => dFicha('<h2>🧾 Factura NV2026-0001</h2>' +
+  '<div class="menu-lista">' + dBtn('1 · Abrir chat de WhatsApp', false, foco === 'chat') + dBtn('2 · Enviar la factura (PDF)', true, foco === 'pdf') +
+  dBtn('✅ Ya la he enviado', false, foco === 'marca') + dBtn('✏️ Corregir o anular esta factura', false, foco === 'rect') + '</div>');
+
+/* Los temas. Cada paso: t (título), x (texto, puede llevar <b>), d (dibujo). */
+const TEMAS = [
+  { id: 'app', ico: '🏠', t: 'Para qué sirve esta app', sub: 'Lo básico, para empezar', pasos: [
+    { t: 'Todas las reservas en un solo sitio', x: 'La app mira <b>cada 15 minutos</b> Booking, Airbnb y Vrbo, y junta aquí las reservas de los dos apartamentos.<br>Ya no hace falta entrar en cada página para saber quién viene.',
+      d: dDemo(dCab() + dGrupo('Próximos 7 días') + tarjetaEjemplo() + dCard({ p: 'Booking', pill: 'Booking', apt: 'Patio Toledano', tag: 'En 3 días', f: 'lun 7 dic → jue 10 dic', n: '3 noches', quien: 'nº 1234567890' }) +
+        dCard({ p: 'Vrbo', pill: 'Vrbo', apt: 'Vistas a la Catedral', tag: 'En 6 días', f: 'jue 10 dic → dom 13 dic', n: '3 noches', quien: 'John Smith · 📞 …9123' })) },
+    { t: 'Solo mira: no puedes romper nada', x: 'La app <b>nunca cancela, cambia ni borra</b> nada en Booking, Airbnb o Vrbo.<br>Lo que toques aquí (casillas, notas, marcas) se queda en la app.<br>Para cancelar o mover una reserva hay que hacerlo en la propia plataforma, como siempre.',
+      d: dDemo('<div class="tuto-grande">🛡️</div><div class="tuto-centro">Booking · Airbnb · Vrbo<br><b>siguen igual</b> toques lo que toques aquí</div>') },
+    { t: 'Para qué te va a servir', x: '<ul class="tuto-lista"><li>Ver quién <b>entra y sale</b> cada día.</li><li>Apuntar lo que ya está hecho: limpieza, llegada, parte de viajeros.</li><li><b>Llamar</b> o escribir por <b>WhatsApp</b> al huésped.</li><li>Mandar el <b>mensaje de bienvenida</b> en su idioma.</li><li>Hacer y enviar las <b>facturas</b>.</li><li>Avisarte si hay un problema, como una doble reserva.</li></ul>' },
+    { t: 'Cada mañana, un email', x: 'Todos los días a las <b>8:00</b> te llega un email con el resumen: quién entra, quién sale, quién está alojado, las notas, los partes pendientes y las facturas por hacer.<br>Si solo lees ese email, ya sabes lo importante del día.',
+      d: dDemo('<div class="tuto-email"><b>📧 Resumen de hoy · Reservas Nuncio Viejo</b><br>Hoy: entra María García (Vistas a la Catedral)<br>Alojados ahora: Patio Toledano<br>Mañana: sale John Smith<br>🧾 1 factura por hacer</div>') },
+    { t: 'Si te equivocas, no pasa nada', x: 'Casi todo lo que marcas se puede <b>deshacer</b>: abajo sale un aviso con «Deshacer» unos segundos.<br>Y nada llega al huésped si tú no lo mandas.<br>Lo único que no se borra son las facturas, y para eso está «Corregir» (lo verás en el tema de Facturas).',
+      d: dDemo(dTarea('🧹 Limpiar Vistas a la Catedral', 'Sale María García', true) + dToast(true)) },
+  ] },
+  { id: 'pantalla', ico: '📋', t: 'La pantalla principal', sub: 'Qué es cada cosa', pasos: [
+    { t: 'Arriba del todo', x: '«<b>Comprobado hace 5 min</b>» es la última vez que la app miró las plataformas.<br>Si quieres que mire ahora mismo, toca el botón de las <b>flechas en círculo</b> (↻) y espera unos segundos.',
+      d: dDemo(dCab('sync')) },
+    { t: 'Los otros botones de arriba', x: '<b>❓ Ayuda</b> abre esto que estás viendo, siempre que lo necesites.<br>El de las <b>tres rayas</b> es el menú: ahí están los datos del mensaje de bienvenida y cerrar la sesión.',
+      d: dDemo(dCab('ayuda')) },
+    { t: 'Las cuatro pestañas', x: '<b>Próximas</b>: la lista de reservas (es la que más vas a usar).<br><b>Calendario</b>: el mes entero.<br><b>Ocupación</b>: cuánto se ha alquilado.<br><b>Facturas</b>: las facturas por hacer y enviar.<br>Toca una para cambiar.',
+      d: dDemo(dTabs('Próximas', 'tabs')) },
+    { t: 'Ver un solo apartamento', x: 'Con «<b>Los dos</b>» ves todo. Toca «Vistas a la Catedral» o «Patio Toledano» para ver solo ese apartamento.',
+      d: dDemo(dTabs('Próximas') + dChips(true)) },
+    { t: 'Cómo se lee una tarjeta', x: 'Cada reserva es una tarjeta:<br>• El <b>color</b> y la etiqueta dicen de dónde viene: <span class="tuto-c p-Booking">Booking</span> <span class="tuto-c p-Airbnb">Airbnb</span> <span class="tuto-c p-Vrbo">Vrbo</span> <span class="tuto-c p-Smartbox">Smartbox</span> <span class="tuto-c p-Directa">Externa</span>.<br>• A la derecha, <b>cuándo</b>: «Entra hoy», «Sale mañana», «En 3 días»…<br>• Debajo, las <b>fechas</b>, las noches y el huésped.',
+      d: dDemo(dCard({ p: 'Airbnb', tag: 'Entra hoy', quien: 'María García · 📞 …4567', fpill: true, ftag: true, ffechas: true })) },
+    { t: 'Las tarjetas grises', x: 'Las grises con <b>🔒 Cerrado</b> son fechas que cerraste tú a mano. <b>No son reservas</b>: no hay que hacer nada con ellas.',
+      d: dDemo(dCard({ p: 'Bloqueo', pill: '🔒 Cerrado', apt: 'Patio Toledano', tag: 'En 5 días', f: 'mié 9 dic → jue 10 dic', n: '1 noche', extra: '<div class="quien vacio" style="font-size:13px">Fechas cerradas a mano (no es reserva)</div>', foco: true })) },
+    { t: 'Ordenadas por cuándo', x: 'La lista está en grupos: <b>Hoy</b>, <b>Ahora alojados</b>, <b>Mañana</b>, <b>Próximos 7 días</b> y <b>Más adelante</b>.<br>Lo de arriba es lo más urgente.',
+      d: dDemo(dGrupo('<span class="tuto-foco">Hoy</span>') + tarjetaEjemplo() + dGrupo('Ahora alojados') + dCard({ p: 'Booking', pill: 'Booking', apt: 'Patio Toledano', tag: 'Sale mañana', f: 'mar 1 dic → sáb 5 dic', n: '4 noches', quien: 'nº 1234567890' })) },
+    { t: 'Buscar una reserva', x: 'Escribe en el <b>buscador</b> el nombre del huésped, el número de reserva o el teléfono. Encuentra también las reservas pasadas.',
+      d: dDemo(dBuscar(true) + tarjetaEjemplo()) },
+    { t: 'Para ver todo de una reserva', x: '<b>Toca la tarjeta</b>. Se abre su ficha con todos los datos. Lo vemos en el tema «Abrir una reserva».',
+      d: dDemo(tarjetaEjemplo(true)) },
+  ] },
+  { id: 'hoy', ico: '✅', t: 'Lo de cada día: «Para hoy»', sub: 'Limpieza, llegadas y parte de viajeros', pasos: [
+    { t: 'Lo que hay que hacer hoy', x: 'Los días que hay algo que hacer, arriba de «Próximas» sale «<b>Para hoy</b>» con una casilla por tarea:<br>🧹 <b>Limpiar</b> el apartamento que queda libre.<br>🔑 <b>Recibir</b> al huésped que llega.<br>📋 Hacer su <b>parte de viajeros</b>.',
+      d: dDemo(dGrupo('Para hoy · 0 de 3 hecho') + dTarea('🧹 Limpiar Vistas a la Catedral', 'Sale John Smith · hoy entra María García') + dTarea('🔑 Recibir a María García', 'Vistas a la Catedral') + dTarea('📋 Parte de viajeros de María García', 'En SES.Hospedajes · Vistas a la Catedral')) },
+    { t: 'Cuando esté hecho, márcalo', x: 'Toca la casilla: se pone <b>verde</b> y se tacha.<br>Lo ve todo el que tenga la app, así sabemos que está hecho <b>sin tener que llamar</b>.',
+      d: dDemo(dGrupo('Para hoy · 1 de 3 hecho') + dTarea('🧹 Limpiar Vistas a la Catedral', 'Sale John Smith · hoy entra María García', true, true) + dTarea('🔑 Recibir a María García', 'Vistas a la Catedral')) },
+    { t: '¿Lo marcaste sin querer?', x: 'Abajo sale un aviso con «<b>Deshacer</b>» durante unos segundos: tócalo y queda como estaba.<br>Si ya se ha ido el aviso, vuelve a tocar la casilla y se desmarca.',
+      d: dDemo(dTarea('🔑 Recibir a María García', 'Vistas a la Catedral', true) + dToast(true)) },
+    { t: 'El parte de viajeros', x: 'Es <b>obligatorio</b>: se hace en la web de <b>SES.Hospedajes</b> en las 24 horas siguientes a la entrada.<br>La app <b>no lo hace por ti</b>: solo te lo recuerda hasta que lo marques como hecho.<br>Si se pasa el día, sale un aviso amarillo arriba.',
+      d: dDemo(dAviso(false, '📋 Un parte de viajeros sin hacer', 'Son obligatorios en SES.Hospedajes en las 24 h siguientes a la entrada. Cuando esté hecho, márcalo en la reserva.', true)) },
+    { t: 'Días de cambio', x: 'Si en una tarjeta pone «<b>🔄 Día de cambio</b>», ese día sale un huésped y entra otro en el mismo apartamento.<br>La limpieza tiene que caber entre la salida y la entrada.',
+      d: dDemo(dCard({ p: 'Airbnb', tag: 'Entra mañana', quien: 'María García', extra: '<div class="quien tuto-foco" style="font-size:13px">🔄 Día de cambio: ese día sale otro huésped</div>' })) },
+  ] },
+  { id: 'reserva', ico: '📖', t: 'Abrir una reserva', sub: 'Llamar, WhatsApp, bienvenida y notas', pasos: [
+    { t: 'La ficha de la reserva', x: 'Al tocar una tarjeta se abre su <b>ficha</b>: entrada, salida, noches, plataforma, huésped, teléfono y número de reserva.',
+      d: dDemo(dFicha('<div class="hoja-top p-Airbnb"><span class="pill">Airbnb</span><span class="apt">Vistas a la Catedral</span></div><h2>vie 4 dic → dom 6 dic</h2><div class="detalle tuto-foco">' +
+        dDato('Entrada', 'viernes 4 de diciembre') + dDato('Salida', 'domingo 6 de diciembre') + dDato('Noches', '2') + dDato('Huésped', 'María García') + dDato('Teléfono', '+34 600 00 45 67') + '</div>')) },
+    { t: 'Llamar o escribir al huésped', x: 'Toca <b>📞 Llamar</b> o <b>💬 WhatsApp</b> y el móvil lo hace solo, sin marcar el número.<br>Booking no manda el teléfono: si lo necesitas, míralo en la app de Booking y escríbelo con «Añadir el teléfono del huésped».',
+      d: dDemo(dFicha('<div class="enlaces">' + dBtn('📞 Llamar', false, true) + dBtn('💬 WhatsApp', false, true) + '</div>')) },
+    { t: 'El mensaje de bienvenida', x: 'Antes de que lleguen, toca <b>👋 Mensaje de bienvenida</b>: sale ya escrito, <b>en el idioma del huésped</b>, con la dirección, cómo llegar, las horas y el wifi.<br>Luego toca «<b>💬 Enviar por WhatsApp</b>», o «<b>📋 Copiar</b>» para pegarlo en el chat de Booking o Airbnb.',
+      d: dDemo(dFicha(dBtn('👋 Mensaje de bienvenida', false, true) + '<div class="tuto-email" style="margin-top:10px">Hello María,<br>Thank you for booking with Apartamentos Nuncio Viejo! …<br>🗺️ How to get there: …</div>')) },
+    { t: 'Los datos de la bienvenida', x: 'La dirección, las horas, el wifi y cómo se entra se escriben <b>una sola vez</b>, en español, en el <b>menú</b> (las tres rayas) → «👋 Mensaje de bienvenida». La app los traduce sola.',
+      d: dDemo(dCab('menu')) },
+    { t: 'Las notas', x: 'Abajo de la ficha hay una <b>nota privada</b>: «llegan a las 23 h», «traen cuna», «ya pagado»…<br>Solo la veis vosotros, <b>nunca el huésped</b>. Puedes escribirla o tocar <b>🎤 Dictar</b> y hablar. Luego toca «Guardar nota».',
+      d: dDemo(dFicha(dCampo('📝 Nota privada (solo la veis vosotros)', 'Llegan tarde, sobre las 23 h', true) + '<div class="enlaces">' + dBtn('🎤 Dictar') + dBtn('Guardar nota') + '</div>')) },
+    { t: 'Las de Booking: «¿Qué es esto?»', x: 'Booking enseña igual una reserva que unos días cerrados a mano. La app lo averigua sola con los correos de Booking.<br>Si no puede, te lo pregunta: toca lo que sea (<b>reserva de Booking</b>, <b>lo cerré yo</b>, <b>Smartbox</b>…). Lo que marques tú <b>manda siempre</b>.',
+      d: dDemo(dFicha('<div class="detalle"><h3>¿Qué es esto?</h3><div class="seg tuto-foco"><span class="segb">✅ Es una reserva de Booking</span><span class="segb">🔒 Lo cerré yo</span><span class="segb">🎁 Es de Smartbox</span><span class="segb">Reserva externa</span></div></div>')) },
+    { t: 'Para salir de la ficha', x: 'Toca <b>Cerrar</b> abajo, o toca en la parte oscura de arriba.',
+      d: dDemo(dFicha('<div class="acciones">' + dBtn('Ver en Airbnb') + dBtn('Cerrar', true, true) + '</div>')) },
+  ] },
+  { id: 'cal', ico: '📅', t: 'Calendario y Ocupación', sub: 'Ver el mes entero', pasos: [
+    { t: 'El calendario', x: 'Cada apartamento tiene una <b>raya de color</b> por reserva. <b>Toca un día</b> y debajo sale quién hay.<br>Con las flechas de arriba cambias de mes. El día de hoy está marcado con un círculo.',
+      d: dDemo('<div class="mes"><span class="icon-btn">‹</span><h2>Diciembre 2026</h2><span class="icon-btn">›</span></div>' + (() => {
+        const bar = (cls, p) => '<div class="carril">' + (p ? '<i class="barra ' + p + ' ' + cls + '"></i>' : '') + '</div>';
+        let g = '<div class="grid">' + ['L', 'M', 'X', 'J', 'V', 'S', 'D'].map(x => '<div class="dsem">' + x + '</div>').join('');
+        const a = ['', '', '', 'p-Airbnb', 'p-Airbnb', 'p-Airbnb', ''], b = ['p-Booking', 'p-Booking', 'p-Booking', '', 'p-Vrbo', 'p-Vrbo', 'p-Vrbo'];
+        for (let i = 0; i < 7; i++) g += '<div class="dia' + (i > 4 ? ' finde' : '') + (i === 3 ? ' hoy' : '') + (i === 4 ? ' sel tuto-foco' : '') + '"><span class="num">' + (i + 1) + '</span>' +
+          bar((a[i] && !a[i - 1] ? 'ini' : '') + (a[i] && !a[i + 1] ? ' fin' : ''), a[i]) + bar((b[i] && !b[i - 1] ? 'ini' : '') + (b[i] && !b[i + 1] ? ' fin' : ''), b[i]) + '</div>';
+        return g + '</div>';
+      })()) },
+    { t: 'La ocupación', x: 'Dice qué parte de las noches del mes se han alquilado en cada apartamento. Es solo para mirar: no hay que hacer nada.',
+      d: dDemo('<div class="detalle ocup"><div class="ocup-top"><h3>Vistas a la Catedral</h3><span class="pct tuto-foco">68 %</span></div><div class="barra-ocup"><i class="p-Airbnb" style="width:40%"></i><i class="p-Booking" style="width:28%"></i></div><div class="hint">21 de 31 noches</div></div>') },
+  ] },
+  { id: 'avisos', ico: '⚠️', t: 'Los avisos de colores', sub: 'Qué significan y qué hacer', pasos: [
+    { t: 'Rojo y amarillo', x: 'Los avisos salen <b>arriba del todo</b>.<br><b>Rojo</b>: es importante, míralo cuanto antes.<br><b>Amarillo</b>: algo pendiente, sin prisa.',
+      d: dDemo(dAviso(true, 'Aviso rojo', 'Importante: míralo ya.') + dAviso(false, 'Aviso amarillo', 'Pendiente: cuando puedas.')) },
+    { t: '🚨 Doble reserva', x: 'Hay <b>dos reservas</b> en el mismo apartamento la misma noche (por ejemplo, una de Booking y otra de Airbnb).<br>Entra en una de las plataformas y <b>cancela o mueve una</b> cuanto antes. Si no sabes cómo, llama a ' + QUIEN_AYUDA + '.',
+      d: dDemo(dAviso(true, '🚨 Doble reserva · Patio Toledano', 'Coinciden 2 noches: del sáb 12 dic al lun 14 dic. Empieza en 9 días. Entra en las plataformas y cancela o mueve una de las dos cuanto antes.', true)) },
+    { t: '📋 Partes sin hacer', x: 'Alguien entró y su <b>parte de viajeros</b> no está marcado. Hazlo en SES.Hospedajes y márcalo en la reserva (o en «Para hoy»).',
+      d: dDemo(dAviso(false, '📋 Un parte de viajeros sin hacer', 'Son obligatorios en SES.Hospedajes en las 24 h siguientes a la entrada. Cuando esté hecho, márcalo en la reserva.', true)) },
+    { t: '⚠️ «Puede que no esté al día»', x: 'La app lleva un rato sin poder mirar las plataformas. <b>Toca ↻</b> y espera.<br>Si sigue saliendo, avisa a ' + QUIEN_AYUDA + ', pero tranquilo: Booking, Airbnb y Vrbo siguen funcionando normal.',
+      d: dDemo(dAviso(true, '⚠️ Puede que no esté al día', 'La app no ha podido comprobar Booking, Airbnb y Vrbo desde las 9:15. Toca ↻ para probar ahora.', true)) },
+    { t: '«¿Reserva o cerrado?»', x: 'Es un bloque de Booking que la app no ha podido aclarar sola. Si pone «<b>Esperando el correo de Booking</b>», es normal: espera unas horas.<br>Si pone «<b>¿Reserva o cerrado? Tócala</b>», ábrela y marca lo que es.',
+      d: dDemo(dCard({ p: 'Booking', pill: 'Booking', apt: 'Patio Toledano', tag: 'En 8 días', f: 'sáb 12 dic → lun 14 dic', n: '2 noches', extra: '<div class="quien vacio tuto-foco" style="font-size:13px">¿Reserva o cerrado? Tócala para aclararlo</div>' })) },
+    { t: '❌ Cancelada', x: 'La plataforma avisó por correo de que la reserva se <b>canceló</b>, pero las fechas siguen cerradas.<br>Si de verdad no viene nadie, <b>abre esas fechas</b> en la plataforma para poder alquilarlas.',
+      d: dDemo(dCard({ p: 'Bloqueo', pill: '❌ Cancelada', apt: 'Vistas a la Catedral', tag: 'En 10 días', f: 'lun 14 dic → mié 16 dic', n: '2 noches', extra: '<div class="quien vacio tuto-foco" style="font-size:13px;color:var(--bad)">Cancelada (aviso del 3 dic). Si no hay nadie, abre las fechas.</div>' })) },
+  ] },
+  { id: 'facturas', ico: '🧾', t: 'Facturas, paso a paso', sub: 'Cómo se hacen y se envían', pasos: [
+    { t: '¿Por qué hay que hacer facturas?', x: 'Desde el <b>1 de diciembre de 2026</b>, las estancias de 30 noches o menos llevan <b>IVA del 10 %</b>, y a cada huésped hay que darle su factura.<br>La buena noticia: <b>la app lo hace casi todo</b>. Tú solo revisas el importe, tocas un botón y la mandas.',
+      d: dDemo('<div class="tuto-grande">🧾</div><div class="tuto-centro">Una estancia = <b>una factura</b></div>') },
+    { t: 'Lo que la app hace sola', x: '<ul class="tuto-lista"><li>Pone el <b>número</b> de cada factura, seguido y sin saltos.</li><li><b>Calcula el IVA</b>: no tienes que hacer cuentas.</li><li>Hace el <b>PDF</b>.</li><li>La <b>apunta en el libro de facturas</b> y la guarda. No tienes que guardar papeles.</li><li>Te <b>recuerda</b> en el email de la mañana las que faltan.</li></ul>' },
+    { t: '¿Cuándo hay que hacerla?', x: 'Cuando termina una estancia (el día que se van), aparece sola en la pestaña <b>Facturas</b>, en «<b>Por hacer</b>».<br>Las fechas cerradas a mano y las reservas canceladas <b>no salen</b>: no llevan factura.',
+      d: dDemo(dTabs('Facturas', 'Facturas')) },
+    { t: 'La pestaña Facturas', x: 'Tiene tres grupos:<br><b>Por hacer</b>: falta hacer la factura.<br><b>Por enviar</b>: está hecha pero falta mandarla al huésped.<br><b>Enviadas</b>: ya está todo.<br>Arriba sale el IVA del trimestre: es solo para que lo sepas, no tienes que hacer nada con él.',
+      d: dDemo(dAviso(false, 'IVA de este trimestre (octubre–diciembre)', '46,36 € de IVA en 2 facturas (510,00 € cobrados)') + dGrupo('<span class="tuto-foco">Por hacer</span>') +
+        dCard({ p: 'Airbnb', tag: 'Por hacer', tagN: true, quien: 'María García · 255,00 €' }) + dGrupo('Enviadas') + dCard({ p: 'Vrbo', pill: 'Vrbo', apt: 'Patio Toledano', tag: 'Enviada', f: 'lun 30 nov → jue 3 dic', n: '3 noches', quien: 'John Smith · NV2026-0001 · 255,00 €' })) },
+    { t: 'Paso 1: el importe', x: 'Toca la estancia que está «Por hacer». Arriba pone el <b>importe que pagó el huésped, con el IVA incluido</b>.<br>Muchas veces <b>ya viene puesto</b>, porque Airbnb, Vrbo y Smartbox lo mandan por correo. Solo revisa que está bien.',
+      d: dDemo(fichaFactura('imp')) },
+    { t: '¿De dónde saco el importe?', x: 'Si no viene puesto, debajo de la casilla la app te dice dónde mirar. Resumen:<ul class="tuto-lista"><li><b>Booking</b>: no lo manda por correo. En la extranet → Reservas → esa reserva: el <b>precio total</b> que paga el huésped.</li><li><b>Airbnb</b>: «Precio de la habitación por X noches» (sin la comisión de Airbnb).</li><li><b>Vrbo</b>: «Importe de la reserva» (sin la tasa de servicio).</li><li><b>Smartbox</b>: el «Precio de la experiencia» del correo de la reserva (no lo que te ingresan).</li><li><b>Externa</b>: lo que te pagó el huésped.</li></ul>' },
+    { t: 'Si pasa de 400 €', x: 'Cuando el importe pasa de <b>400 €</b>, la factura tiene que llevar los datos del huésped: <b>nombre, DNI o pasaporte, domicilio y país</b>. La app te pide las casillas sola.<br>Son <b>los mismos datos que pones en el parte de viajeros</b>. Hasta 400 € no hace falta nada de esto.',
+      d: dDemo(dFicha(dCampo('Importe que pagó el huésped (IVA incluido)', '520,00') + '<div class="hint"><b>Más de 400 €: factura completa.</b> Son los mismos datos que pones en el parte de viajeros (SES.Hospedajes).</div>' +
+        dCampo('Nombre y apellidos', 'María García López', true) + dCampo('DNI, NIE o pasaporte', '', true, 'Ej.: 12345678Z'))) },
+    { t: 'Paso 2: «Hacer factura»', x: 'Revisa el importe y toca <b>Hacer factura</b>. Se crea al momento, con su número (por ejemplo <b>NV2026-0001</b>).<br>⚠️ Una factura hecha <b>ya no se borra</b> (lo dice la ley). Si te equivocas tiene arreglo, lo vemos en dos pasos.',
+      d: dDemo(fichaFactura('hacer')) },
+    { t: 'Paso 3: enviarla por WhatsApp', x: 'Dos botones, en orden:<br><b>1 · Abrir chat de WhatsApp</b>: sale el chat con un mensaje ya escrito. Envíalo y vuelve.<br><b>2 · Enviar la factura (PDF)</b>: elige <b>WhatsApp</b> y el chat del huésped.<br>Y ya está: pasa sola a «Enviadas».',
+      d: dDemo(fichaHecha('pdf')) },
+    { t: 'Si no tienes su teléfono', x: 'Con Booking pasa a menudo. Puedes escribir el teléfono (está en la app de Booking) o tocar <b>Enviar la factura (PDF)</b> y mandarla por correo o por donde habléis.<br>Después toca <b>✅ Ya la he enviado</b> para que la app lo sepa.',
+      d: dDemo(fichaHecha('marca')) },
+    { t: 'Si te equivocaste o devuelves dinero', x: 'Toca <b>✏️ Corregir o anular esta factura</b>. Elige el motivo y pon el <b>total correcto</b> (si se devuelve todo, pon 0).<br>La app hace una «<b>factura rectificativa</b>» (empieza por NVR) que se manda al huésped igual que la otra.<br>Así se hace bien: <b>nunca se borra</b> una factura.',
+      d: dDemo(dFicha('<h2>🧾 Factura NV2026-0001</h2><div class="menu-lista">' + dBtn('✏️ Corregir o anular esta factura', false, true) + '</div>')) },
+    { t: 'Lo que todavía tenemos que definir', x: 'Presentar el IVA a Hacienda (el <b>modelo 303</b>, cada tres meses; el primero, en enero de 2027) y apuntar las facturas de las comisiones de Booking, Airbnb y los demás, <b>todavía lo tenemos que definir</b> ' + QUIEN_AYUDA + ' y tú.<br><b>Hay tiempo de sobra.</b> De momento, tú solo haz y envía las facturas.',
+      d: dDemo('<div class="tuto-grande">🗓️</div><div class="tuto-centro">Modelo 303: <b>lo vemos más adelante</b></div>') },
+    { t: '¿Lo practicamos?', x: 'Puedes hacer una <b>factura de mentira</b>, entera, las veces que quieras.<br>No cuenta, no gasta número y <b>no se envía nada</b> a nadie.',
+      practica: true },
+  ] },
+  { id: 'dudas', ico: '🆘', t: 'Si algo no cuadra', sub: 'Antes de llamar, mira esto', pasos: [
+    { t: 'Primero, toca ↻', x: 'Muchas veces es solo que la app aún no había mirado. Toca el botón de las <b>flechas en círculo</b> y espera unos segundos.',
+      d: dDemo(dCab('sync')) },
+    { t: 'Una reserva nueva tarda un poco', x: 'Una reserva nueva puede tardar hasta <b>15 minutos</b> en salir.<br>El nombre, el teléfono y el importe llegan por correo y pueden tardar <b>hasta una hora</b> más.' },
+    { t: 'Cuándo llamar a ' + QUIEN_AYUDA, x: 'Llama si:<ul class="tuto-lista"><li>Sale una <b>🚨 doble reserva</b> y no sabes cómo arreglarla.</li><li>«Puede que no esté al día» no se quita en <b>todo el día</b>.</li><li>Al hacer una factura sale un <b>error</b>.</li></ul>Para lo demás, vuelve a mirar esta ayuda.' },
+    { t: 'La ayuda está siempre aquí', x: 'Arriba del todo, el botón <b>❓ Ayuda</b>. Puedes verla todas las veces que quieras.',
+      d: dDemo(dCab('ayuda')) },
+  ] },
+];
+
+/* ---------- Abrir, cerrar y moverse ---------- */
+function tutoEstado() { return leer(TUTO_K) || {}; }
+function tutoMarcar(k, v) { const e = tutoEstado(); e[k] = v; guardar(TUTO_K, e); }
+function abrirTutorial(id) {
+  const nuevo = !tuto;
+  tuto = { cap: null, paso: 0, seguido: false };
+  let el = $('#tuto');
+  if (!el) { el = document.createElement('div'); el.id = 'tuto'; el.setAttribute('role', 'dialog'); el.setAttribute('aria-modal', 'true'); document.body.appendChild(el); }
+  el.hidden = false; document.body.classList.add('bloq');
+  if (nuevo) { try { history.pushState({ tuto: 1 }, ''); } catch (e) { /* nada */ } }
+  if (id && TEMAS.some(t => t.id === id)) tutoIr(id, 0); else tutoIndice();
+}
+function tutoOcultar() {
+  tuto = null; callar();
+  const el = $('#tuto'); if (el) { el.hidden = true; el.innerHTML = ''; }
+  document.body.classList.toggle('bloq', !$('#velo').hidden);
+}
+function cerrarTutorial() {
+  if (history.state && history.state.tuto) history.back();   // el «atrás» del móvil también la cierra
+  else tutoOcultar();
+}
+window.addEventListener('popstate', () => { if (tuto) tutoOcultar(); });
+
+function tutoPintar(html) {
+  const el = $('#tuto');
+  el.innerHTML = html + '<button class="tuto-mas" id="tu-mas" hidden>👇 Hay más abajo</button>';
+  el.scrollTop = 0;
+  // Si no cabe todo en la pantalla, se avisa (y con un toque baja)
+  const mas = $('#tu-mas');
+  const verMas = () => { mas.hidden = el.scrollHeight - el.clientHeight - el.scrollTop < 40; };
+  el.onscroll = verMas; verMas();
+  mas.onclick = () => el.scrollTo({ top: el.scrollHeight, behavior: 'smooth' });
+  const x = $('#tu-salir'); if (x) x.onclick = cerrarTutorial;
+  const v = $('#tu-voz'); if (v) v.onclick = () => { tutoVoz = !tutoVoz; if (tutoVoz) leerEnVoz(); else callar(); v.textContent = tutoVoz ? '🔇 Callar' : '🔊 Léemelo'; v.classList.toggle('on', tutoVoz); };
+}
+const barraTuto = () => '<div class="tuto-barra"><button class="btn tuto-salir" id="tu-salir">✕ Salir</button><span class="tuto-hueco"></span>' + botonVoz() + '</div>';
+const botonVoz = () => VOZ ? '<button class="btn tuto-voz' + (tutoVoz ? ' on' : '') + '" id="tu-voz">' + (tutoVoz ? '🔇 Callar' : '🔊 Léemelo') + '</button>' : '';
+
+function tutoIndice() {
+  callar();
+  const hechos = tutoEstado().hechos || {};
+  tuto.cap = null;
+  let h = barraTuto() + '<div class="tuto-cuerpo"><h2 class="tuto-tit">¿Qué quieres aprender?</h2>' +
+    '<p class="tuto-txt" id="tu-txt">Toca un tema. Son pasos cortos, con un dibujo de la pantalla. Puedes salir cuando quieras con «✕ Salir».</p><div class="tuto-temas">';
+  TEMAS.forEach((t, i) => {
+    h += '<button class="tuto-tema" data-tema="' + t.id + '"><span class="tuto-ico">' + t.ico + '</span><span class="tuto-tt"><b>' + (i + 1) + '. ' + esc(t.t) + '</b><small>' + esc(t.sub) + ' · ' + t.pasos.length + ' pasos</small></span>' +
+      (hechos[t.id] ? '<span class="tuto-visto" aria-label="Visto">✅</span>' : '') + '</button>';
+  });
+  h += '</div><div class="menu-lista" style="margin-top:16px"><button class="btn prim" id="tu-todo">▶ Verlo todo, desde el principio</button><button class="btn" id="tu-prac">🧪 Practicar una factura de mentira</button></div></div>';
+  tutoPintar(h);
+  document.querySelectorAll('[data-tema]').forEach(b => { b.onclick = () => { tuto.seguido = false; tutoIr(b.dataset.tema, 0); }; });
+  $('#tu-todo').onclick = () => { tuto.seguido = true; tutoIr(TEMAS[0].id, 0); };
+  $('#tu-prac').onclick = () => practica(0);
+  if (tutoVoz) leerEnVoz();
+}
+
+function tutoIr(id, paso) {
+  const i = TEMAS.findIndex(t => t.id === id), tema = TEMAS[i], p = tema.pasos[paso];
+  tuto.cap = id; tuto.paso = paso;
+  const n = tema.pasos.length, ult = paso === n - 1;
+  const pct = Math.round((paso + 1) / n * 100);
+  let h = barraTuto() +
+    '<div class="tuto-prog"><div class="tuto-prog-txt"><span class="tuto-donde">' + tema.ico + ' ' + esc(tema.t) + '</span><span class="tuto-paso">Paso ' + (paso + 1) + ' de ' + n + '</span></div><div class="tuto-prog-barra"><i style="width:' + pct + '%"></i></div></div>' +
+    '<div class="tuto-cuerpo"><h2 class="tuto-tit">' + esc(p.t) + '</h2><div class="tuto-txt" id="tu-txt">' + p.x + '</div>' + (p.d || '') +
+    (p.practica ? '<div class="menu-lista" style="margin-top:14px"><button class="btn prim" id="tu-prac">🧪 Sí, practicar una factura de mentira</button></div>' : '') + '</div>' +
+    '<div class="tuto-pie"><div class="tuto-nav"><button class="btn" id="tu-atras">← Atrás</button><button class="btn prim" id="tu-sig">' + (ult ? 'Terminar ✓' : 'Siguiente →') + '</button></div></div>';
+  tutoPintar(h);
+  $('#tu-atras').onclick = () => { if (paso > 0) tutoIr(id, paso - 1); else tutoIndice(); };
+  $('#tu-sig').onclick = () => { if (!ult) tutoIr(id, paso + 1); else tutoFin(i); };
+  if ($('#tu-prac')) $('#tu-prac').onclick = () => practica(0);
+  if (tutoVoz) leerEnVoz();
+}
+
+function tutoFin(i) {
+  const tema = TEMAS[i], sig = TEMAS[i + 1];
+  const e = tutoEstado(); e.hechos = e.hechos || {}; e.hechos[tema.id] = 1; guardar(TUTO_K, e);
+  if (tuto.seguido && sig) { tutoIr(sig.id, 0); return; }
+  callar();
+  let h = barraTuto() + '<div class="tuto-cuerpo"><div class="tuto-grande">👏</div><h2 class="tuto-tit tuto-centro">¡Muy bien!</h2>' +
+    '<p class="tuto-txt tuto-centro" id="tu-txt">Ya has visto «' + esc(tema.t) + '».' + (sig ? '' : ' Era el último tema.') + '</p><div class="menu-lista">' +
+    (sig ? '<button class="btn prim" id="tu-sigtema">Siguiente tema: ' + sig.ico + ' ' + esc(sig.t) + '</button>' : '') +
+    '<button class="btn" id="tu-indice">Ver todos los temas</button><button class="btn" id="tu-fin">Salir de la ayuda</button></div></div>';
+  tutoPintar(h);
+  if (sig) $('#tu-sigtema').onclick = () => tutoIr(sig.id, 0);
+  $('#tu-indice').onclick = tutoIndice;
+  $('#tu-fin').onclick = cerrarTutorial;
+}
+
+/* ---------- Leer en voz alta ---------- */
+function textoParaVoz(html) {
+  const d = document.createElement('div');
+  d.innerHTML = String(html).replace(/<li>/g, '<li>. ').replace(/<br\s*\/?>/g, '. ');
+  return d.textContent.replace(/[\u{1F000}-\u{1FAFF}\u{2600}-\u{27BF}\u{2190}-\u{21FF}\u{2B00}-\u{2BFF}\u{FE0F}\u{200D}]/gu, ' ')
+    .replace(/\bnº\b/g, 'número').replace(/↻/g, '').replace(/·/g, ',').replace(/\s*\.\s*\./g, '.').replace(/\s+/g, ' ').trim();
+}
+function leerEnVoz() {
+  if (!VOZ) return;
+  const tit = document.querySelector('#tuto .tuto-tit'), txt = $('#tu-txt');
+  const s = textoParaVoz((tit ? tit.innerHTML + '. ' : '') + (txt ? txt.innerHTML : ''));
+  try {
+    VOZ.cancel();
+    const u = new SpeechSynthesisUtterance(s);
+    u.lang = 'es-ES'; u.rate = 0.92;
+    const voces = VOZ.getVoices() || [];
+    const v = voces.find(x => /^es[-_]ES/i.test(x.lang)) || voces.find(x => /^es/i.test(x.lang));
+    if (v) u.voice = v;
+    VOZ.speak(u);
+  } catch (e) { /* sin voz */ }
+}
+function callar() { try { if (VOZ) VOZ.cancel(); } catch (e) { /* nada */ } }
+
+/* ---------- Práctica: una factura de mentira (no llama al motor) ---------- */
+const PRAC = { imp: '', tel: '+34 600 00 45 67', nom: 'María García', doc: '', dom: '', pais: '', chat: false };
+function practica(paso, msg) {
+  callar();
+  if (paso === 0) Object.assign(PRAC, { imp: '', doc: '', dom: '', pais: '', chat: false });
+  const aviso = '<div class="tuto-practica-aviso">🧪 <b>PRÁCTICA</b> · Es de mentira: no cuenta, no gasta número y no se envía nada.</div>';
+  const pie = atras => (atras ? '<div class="tuto-pie"><div class="tuto-nav"><button class="btn" id="pr-atras">← Atrás</button></div></div>' : '');
+  let h = barraTuto();
+  if (paso === 0) {
+    h += '<div class="tuto-cuerpo">' + aviso + '<h2 class="tuto-tit">1. Busca la estancia</h2><div class="tuto-txt" id="tu-txt">María se fue ayer. En la pestaña Facturas, su estancia está en «<b>Por hacer</b>».<br><b>Tócala</b> para empezar.</div>' +
+      '<div class="tuto-demo tuto-practica">' + dTabs('Facturas') + dGrupo('Por hacer') +
+      '<button class="card p-Airbnb tuto-foco" id="pr-card"><div class="card-top"><span class="pill">Airbnb</span><span class="apt">Vistas a la Catedral</span><span class="tags"><span class="tag nueva">Por hacer</span></span></div>' +
+      '<div class="fechas">vie 4 dic → dom 6 dic <span class="n">· 2 noches</span></div><div class="quien">María García</div></button></div></div>' + pie(false);
+    tutoPintar(h);
+    $('#pr-card').onclick = () => practica(1);
+  } else if (paso === 1) {
+    const grande = numPrac(PRAC.imp) > LIMITE_SIMPLIFICADA;
+    h += '<div class="tuto-cuerpo">' + aviso + '<h2 class="tuto-tit">2. Escribe el importe</h2><div class="tuto-txt" id="tu-txt">Escribe lo que pagó María, <b>con el IVA incluido</b>. Por ejemplo: <b>255</b>.<br>Luego toca «<b>Hacer factura</b>».</div>' +
+      '<div class="tuto-demo tuto-practica"><div class="tuto-hoja"><div class="hoja-top p-Airbnb"><span class="pill">Airbnb</span><span class="apt">Vistas a la Catedral</span></div><h2>🧾 Hacer la factura</h2>' +
+      '<label class="campo">Importe que pagó el huésped (IVA incluido)<input id="pr-imp" inputmode="decimal" autocomplete="off" placeholder="Ej.: 255,00" value="' + esc(PRAC.imp) + '"></label>' +
+      '<div class="hint">De Airbnb: «Precio de la habitación por X noches» (sin la comisión de Airbnb).</div>' +
+      '<label class="campo">Teléfono del huésped (para WhatsApp)<input id="pr-tel" inputmode="tel" autocomplete="off" value="' + esc(PRAC.tel) + '"></label>' +
+      '<div id="pr-grande"' + (grande ? '' : ' hidden') + '><div class="hint" style="margin-top:14px"><b>Más de ' + LIMITE_SIMPLIFICADA + ' €: factura completa.</b> Son los mismos datos que pones en el parte de viajeros (SES.Hospedajes).</div>' +
+      '<label class="campo">Nombre y apellidos<input id="pr-nom" autocomplete="off" value="' + esc(PRAC.nom) + '"></label>' +
+      '<label class="campo">DNI, NIE o pasaporte<input id="pr-doc" autocomplete="off" value="' + esc(PRAC.doc) + '"></label>' +
+      '<label class="campo">Domicilio (calle, número, ciudad, código postal)<textarea id="pr-dom" style="min-height:64px">' + esc(PRAC.dom) + '</textarea></label>' +
+      '<label class="campo">País<input id="pr-pais" autocomplete="off" placeholder="España" value="' + esc(PRAC.pais) + '"></label></div>' +
+      '<div class="msg" id="pr-msg">' + (msg ? '<div class="aviso mal">' + esc(msg) + '</div>' : '') + '</div>' +
+      '<div class="acciones"><button class="btn prim" id="pr-hacer">Hacer factura</button></div></div></div></div>' + pie(true);
+    tutoPintar(h);
+    const imp = $('#pr-imp');
+    imp.oninput = () => { PRAC.imp = imp.value; $('#pr-grande').hidden = !(numPrac(imp.value) > LIMITE_SIMPLIFICADA); };
+    $('#pr-atras').onclick = () => practica(0);
+    $('#pr-hacer').onclick = () => {
+      ['tel', 'nom', 'doc', 'dom', 'pais'].forEach(k => { if ($('#pr-' + k)) PRAC[k] = $('#pr-' + k).value; });
+      PRAC.imp = imp.value;
+      const v = numPrac(PRAC.imp);
+      if (!(v > 0)) return practica(1, 'Escribe el importe, por ejemplo 255 o 255,50.');
+      if (v > 50000) return practica(1, 'Ese importe es demasiado alto. Revísalo.');
+      if (v > LIMITE_SIMPLIFICADA && (!PRAC.nom.trim() || !PRAC.doc.trim() || !PRAC.dom.trim())) return practica(1, 'Pasa de ' + LIMITE_SIMPLIFICADA + ' €: faltan el nombre, el documento o el domicilio del huésped. Para practicar, invéntatelos.');
+      practica(2);
+    };
+    if (msg) $('#pr-msg').scrollIntoView({ block: 'center' });
+    else if (!PRAC.imp) setTimeout(() => { try { imp.focus(); } catch (e) { /* nada */ } }, 50);
+  } else if (paso === 2) {
+    const total = Math.round(numPrac(PRAC.imp) * 100) / 100, base = Math.round(total / 1.1 * 100) / 100, iva = Math.round((total - base) * 100) / 100;
+    h += '<div class="tuto-cuerpo">' + aviso + '<h2 class="tuto-tit">3. ¡Factura hecha! Ahora, a enviarla</h2><div class="tuto-txt" id="tu-txt">La app ha puesto el número y ha calculado el IVA ella sola.<br>Ahora toca los botones <b>en orden</b>: primero el <b>1</b> y después el <b>2</b>.</div>' +
+      '<div class="msg" id="pr-msg">' + (msg || '') + '</div><div class="tuto-demo tuto-practica"><div class="tuto-hoja"><div class="hoja-top p-Airbnb"><span class="pill">Airbnb</span><span class="apt">Vistas a la Catedral</span></div><h2>🧾 Factura PRUEBA-0001</h2>' +
+      '<div class="detalle">' + dDato('Total', eur(total)) + dDato('Sin IVA', eur(base)) + dDato('IVA (10 %)', eur(iva)) + '</div>' +
+      '<div class="menu-lista"><button class="btn' + (PRAC.chat ? '' : ' tuto-foco') + '" id="pr-chat">' + (PRAC.chat ? '✓ ' : '') + '1 · Abrir chat de WhatsApp</button>' +
+      '<button class="btn prim' + (PRAC.chat ? ' tuto-foco' : '') + '" id="pr-pdf">2 · Enviar la factura (PDF)</button>' +
+      '<button class="btn" id="pr-rect">✏️ Corregir o anular esta factura</button></div></div></div></div>' + pie(false);
+    tutoPintar(h);
+    $('#pr-chat').onclick = () => { PRAC.chat = true; practica(2, '<div class="aviso">En la de verdad, aquí <strong>se abre WhatsApp</strong> con el chat de María y un mensaje ya escrito. Lo envías y vuelves a la app. Ahora toca el <strong>2</strong>.</div>'); };
+    $('#pr-pdf').onclick = () => {
+      if (!PRAC.chat) return practica(2, '<div class="aviso">Primero el <strong>1</strong>: abre el chat y manda el mensaje. Así, al enviar la factura, el chat de María sale el primero.</div>');
+      practica(3);
+    };
+    $('#pr-rect').onclick = () => practica(2, '<div class="aviso">Aquí se corrige una factura con un error o una devolución: eliges el motivo y el total correcto, y la app hace una <strong>factura rectificativa</strong> para mandarla igual. En la práctica no hace falta.</div>');
+  } else {
+    h += '<div class="tuto-cuerpo">' + aviso + '<h2 class="tuto-tit">4. Elige WhatsApp y el chat</h2><div class="tuto-txt" id="tu-txt">En la de verdad, al tocar el 2 sale el <b>menú de compartir</b> del móvil. Toca <b>WhatsApp</b> y luego el chat de María (sale el primero, porque acabas de escribirle).<br>Al volver a la app, la factura ya está en «<b>Enviadas</b>». ¡Y ya está!</div>' +
+      '<div class="tuto-demo"><div class="tuto-compartir"><b>Compartir</b><div class="tuto-apps"><span class="tuto-foco"><i>💬</i>WhatsApp</span><span><i>✉️</i>Gmail</span><span><i>📁</i>Drive</span></div></div></div>' +
+      '<div class="tuto-txt tuto-resumen"><b>Resumen:</b><br>1. Toca la estancia «Por hacer».<br>2. Revisa el importe y toca «Hacer factura».<br>3. Botón 1 (chat) y botón 2 (factura) → WhatsApp.</div>' +
+      '<div class="menu-lista"><button class="btn prim" id="pr-otra">Practicar otra vez</button><button class="btn" id="pr-ayuda">Volver a la ayuda</button><button class="btn" id="pr-salir">Salir</button></div></div>' + pie(false);
+    tutoPintar(h);
+    $('#pr-otra').onclick = () => practica(0);
+    $('#pr-ayuda').onclick = tutoIndice;
+    $('#pr-salir').onclick = cerrarTutorial;
+  }
+  if (tutoVoz) leerEnVoz();
+}
+function numPrac(s) { return Number(String(s || '').replace(/\.(?=\d{3}(\D|$))/g, '').replace(',', '.')); }
+
+/* La primera vez, la app lo ofrece (una sola vez en cada móvil) */
+function ofrecerTutorial() {
+  if (tutoOfrecido) return;
+  tutoOfrecido = true;
+  setTimeout(() => {
+    if (tutoEstado().ofrecido || !D || !SES || tuto || !$('#velo').hidden) return;
+    tutoMarcar('ofrecido', 1);
+    abrirHoja('<h2>👋 Nueva: la ayuda</h2><p class="tuto-txt">Ahora la app tiene una <b>ayuda</b> que te enseña, paso a paso, cómo funciona todo: las reservas, lo de cada día y <b>las facturas</b>.</p>' +
+      '<p class="tuto-txt">Son unos minutos, y puedes parar cuando quieras.</p><div class="menu-lista"><button class="btn prim" id="o-si">Sí, enséñame</button><button class="btn" id="o-no">Ahora no</button></div>' +
+      '<div class="hint">La tienes siempre en el botón «❓ Ayuda» de arriba.</div>');
+    $('#o-si').onclick = () => { cerrarHoja(); abrirTutorial(); };
+    $('#o-no').onclick = () => { cerrarHoja(); const b = $('#btnAyuda'); b.classList.add('tuto-foco'); setTimeout(() => b.classList.remove('tuto-foco'), 6000); };
+  }, 1500);
+}
+
 /* ---------- Eventos ---------- */
 document.addEventListener('click', e => {
   const t = e.target;
+  if (t.closest('#tuto')) return;   // la ayuda tiene sus propios botones
   const ac = t.closest('[data-accion]');
-  if (ac) { if (ac.dataset.accion === 'recargar') cargar(); else if (ac.dataset.accion === 'calendarios') abrirCalendarios(); return; }
+  if (ac) { if (ac.dataset.accion === 'recargar') cargar(); else if (ac.dataset.accion === 'calendarios') abrirCalendarios(); else if (ac.dataset.accion === 'tuto') abrirTutorial(ac.dataset.tema); return; }
   if (t.closest('.hoja') && !t.closest('[data-id]') && !t.closest('[data-factura]')) return;
   const tb = t.closest('.tabs button'); if (tb) { tab = tb.dataset.tab; render(); window.scrollTo(0, 0); return; }
   const ch = t.closest('[data-filtro]'); if (ch) { filtro = ch.dataset.filtro; render(); return; }
@@ -1155,6 +1533,7 @@ $('#velo').addEventListener('click', e => { if (e.target.id === 'velo') cerrarHo
 $('#btnSync').onclick = sincronizar;
 $('#buscar').addEventListener('input', e => { busqueda = e.target.value; if (D && tab === 'proximas') { renderProximas(); window.scrollTo(0, 0); } });
 $('#btnMenu').onclick = abrirMenu;
+$('#btnAyuda').onclick = () => abrirTutorial();
 
 function iniciar() {
   if (!SES) { pantallaEntrar(''); return; }
