@@ -6,7 +6,7 @@ const DSEM_L = ['domingo', 'lunes', 'martes', 'miércoles', 'jueves', 'viernes',
 const MES = ['ene', 'feb', 'mar', 'abr', 'may', 'jun', 'jul', 'ago', 'sep', 'oct', 'nov', 'dic'];
 const MES_L = ['enero', 'febrero', 'marzo', 'abril', 'mayo', 'junio', 'julio', 'agosto', 'septiembre', 'octubre', 'noviembre', 'diciembre'];
 
-let D = null, busqueda = '', tab = 'proximas', filtro = 'todos', mes = null, mesOc = null, diaSel = null, ocupado = false, sinConexion = false;
+let D = null, hojaId = null, busqueda = '', tab = 'proximas', filtro = 'todos', mes = null, mesOc = null, diaSel = null, ocupado = false, sinConexion = false;
 const $ = s => document.querySelector(s);
 
 /* ---------- Almacén local (puede fallar en modo privado) ---------- */
@@ -95,9 +95,24 @@ function hace(s) {
   return h < 24 ? 'Comprobado hace ' + h + ' h' : 'Comprobado el ' + s.slice(8, 10) + '/' + s.slice(5, 7);
 }
 let toastT = null;
-function toast(m) { const t = $('#toast'); t.textContent = m; t.classList.add('ver'); clearTimeout(toastT); toastT = setTimeout(() => t.classList.remove('ver'), 4200); }
+// Con «idDeshacer», el aviso lleva un botón «Deshacer» unos segundos (el motor guarda lo último que ha cambiado cada móvil)
+function toast(m, idDeshacer) {
+  const t = $('#toast');
+  t.innerHTML = '<span>' + esc(m) + '</span>' + (idDeshacer ? '<button type="button" id="toast-deshacer">Deshacer</button>' : '');
+  t.classList.add('ver'); t.classList.toggle('con-boton', !!idDeshacer);
+  clearTimeout(toastT); toastT = setTimeout(() => t.classList.remove('ver', 'con-boton'), idDeshacer ? 8000 : 4200);
+  if (idDeshacer) $('#toast-deshacer').onclick = e => { e.stopPropagation(); deshacer(idDeshacer); };
+}
+async function deshacer(id) {
+  const t = $('#toast'); clearTimeout(toastT);
+  t.innerHTML = '<span>Deshaciendo…</span>'; t.classList.remove('con-boton');
+  try {
+    D = await api('deshacer', { id }); guardar('nv-datos', D); render(); toast('Deshecho: está como antes');
+    if (!$('#velo').hidden && hojaId === id) abrirReserva(id);
+  } catch (e) { toast(msgError(e)); }
+}
 function msgError(e) { const m = e && e.message ? e.message : String(e || 'Error'); return /failed to fetch|load failed|networkerror/i.test(m) ? 'Sin conexión' : m; }
-function abrirHoja(html) { $('#hoja').innerHTML = '<div class="asa"></div>' + html; $('#velo').hidden = false; document.body.classList.add('bloq'); }
+function abrirHoja(html) { hojaId = null; $('#hoja').innerHTML = '<div class="asa"></div>' + html; $('#velo').hidden = false; document.body.classList.add('bloq'); }
 function cerrarHoja() { $('#velo').hidden = true; document.body.classList.remove('bloq'); }
 
 /* ---------- Entrar con email y código ---------- */
@@ -287,6 +302,43 @@ function renderBusqueda() {
   ajustarNombres();
 }
 
+/* Lo que hay que hacer hoy: limpiar lo que queda libre, recibir a los que llegan y su parte de viajeros */
+function tareasDeHoy(rs) {
+  const hoy = D.hoy, t = [];
+  const reales = rs.filter(r => !esCierre(r) && !sinAclarar(r));
+  reales.forEach(r => {
+    if (r.salida !== hoy) return;
+    const entra = reales.find(x => x !== r && x.apt === r.apt && x.entrada === hoy && !x.dudoso);
+    t.push({ r, k: 'limpio', hecho: !!r.limpio, txt: '🧹 Limpiar ' + r.apt,
+      sub: (r.nombre ? 'Sale ' + r.nombre : 'Salen los huéspedes') + (entra ? ' · hoy entra ' + (entra.nombre || 'otro huésped') : '') });
+  });
+  reales.forEach(r => {
+    if (r.entrada !== hoy || r.dudoso) return;
+    t.push({ r, k: 'recibido', hecho: !!r.recibido, txt: '🔑 Recibir a ' + (r.nombre || 'los huéspedes'), sub: r.apt });
+    if (r.llevaParte) t.push({ r, k: 'parte', hecho: !!r.parte, txt: '📋 Parte de viajeros' + (r.nombre ? ' de ' + r.nombre : ''), sub: 'En SES.Hospedajes · ' + r.apt });
+  });
+  return t;
+}
+function bloqueTareas(rs) {
+  const t = tareasDeHoy(rs);
+  if (!t.length) return '';
+  const hechas = t.filter(x => x.hecho).length;
+  return '<div class="grupo">Para hoy · ' + (hechas === t.length ? '✅ todo hecho' : hechas + ' de ' + t.length + ' hecho') + '</div>' +
+    t.map(x => '<button class="tarea' + (x.hecho ? ' hecha' : '') + '" data-tarea="' + x.k + '" data-tid="' + esc(x.r.id) + '" aria-pressed="' + x.hecho + '">' +
+      '<span class="caja" aria-hidden="true">✓</span><span class="t"><span class="tt">' + esc(x.txt) + '</span><small>' + esc(x.sub) + '</small></span></button>').join('');
+}
+async function marcarTarea(b) {
+  const r = D.reservas.find(x => x.id === b.dataset.tid), k = b.dataset.tarea;
+  if (!r || b.disabled) return;
+  const hecho = !r[k];
+  b.disabled = true; b.classList.toggle('hecha', hecho);   // se ve marcada al momento; si falla, vuelve como estaba
+  try {
+    D = await api(k === 'parte' ? 'parte' : 'tarea', k === 'parte' ? { id: r.id, hecho } : { id: r.id, tarea: k, hecho });
+    guardar('nv-datos', D); render();
+    toast(hecho ? '✅ Marcado como hecho' : 'Desmarcado', r.id);
+  } catch (e) { toast(msgError(e)); render(); }
+}
+
 function renderProximas() {
   if (busqueda.trim().length >= 2) { renderBusqueda(); return; }
   const hoy = D.hoy, man = sumar(hoy, 1), sem = sumar(hoy, 7);
@@ -299,7 +351,7 @@ function renderProximas() {
     ['Próximos 7 días', rs.filter(r => r.entrada > man && r.entrada <= sem)],
     ['Más adelante', rs.filter(r => r.entrada > sem)],
   ];
-  let h = '';
+  let h = bloqueTareas(rs);
   grupos.forEach(g => { if (g[1].length) h += '<div class="grupo">' + g[0] + '</div>' + g[1].map(tarjeta).join(''); });
   $('#vista').innerHTML = h || '<div class="vacio-lista"><b>No hay reservas próximas</b>Cuando entre una en Booking, Airbnb o Vrbo aparecerá aquí.</div>';
   ajustarNombres();
@@ -425,6 +477,7 @@ function abrirReserva(id) {
       '<div class="hint">Con el prefijo del país, por ejemplo +34 600 123 456.' + (r.tel4 && !r.tel ? ' Acaba en ' + esc(r.tel4) + '; el número completo está en la app de ' + esc(r.plat) + '.' : r.plat === 'Booking' && !r.tel ? ' Booking no lo manda: está en la app de Booking.' : '') + '</div>' +
       '<div class="enlaces"><button class="btn" id="t-guardar">Guardar teléfono</button></div><div class="msg" id="t-msg"></div></div>';
   }
+  if (!esCierre(r) && !r.dudoso && r.entrada >= D.hoy) h += '<div class="enlaces"><button class="btn" id="b-abrir">👋 Mensaje de bienvenida</button></div>';
   if (diaDeCambio(r)) h += '<div class="hint">🔄 <b>Día de cambio:</b> el día que entra sale otro huésped de este apartamento. La limpieza tiene que caber entre la salida y la entrada.</div>';
   // Parte de viajeros (SES.Hospedajes): la app solo recuerda que está pendiente
   if (r.llevaParte) {
@@ -465,23 +518,25 @@ function abrirReserva(id) {
   if (llevaFactura(r)) h += '<div class="enlaces"><button class="btn" data-factura="' + esc(r.id) + '">🧾 ' + (r.factura ? 'Factura ' + esc(r.factura) : 'Hacer la factura') + '</button></div>';
   h += '<div class="acciones">' + (r.enlace ? '<a class="btn" target="_blank" rel="noopener" href="' + esc(r.enlace) + '">Ver en ' + esc(r.plat) + '</a>' : '') + '<button class="btn prim" id="f-cerrar">Cerrar</button></div>';
   abrirHoja(h);
+  hojaId = r.id;
   const ta = $('#n-texto'), original = r.notas || '';
+  if ($('#b-abrir')) $('#b-abrir').onclick = () => { if (avisoNotaSinGuardar()) return; pararDictado(); abrirBienvenida(r.id); };
   const guardarNota = async () => {
     pararDictado();
     const b = $('#n-guardar'); b.disabled = true; b.textContent = 'Guardando…';
-    try { D = await api('nota', { id: r.id, texto: ta.value }); guardar('nv-datos', D); render(); toast(ta.value.trim() ? 'Nota guardada' : 'Nota borrada'); abrirReserva(r.id); }
+    try { D = await api('nota', { id: r.id, texto: ta.value }); guardar('nv-datos', D); render(); toast(ta.value.trim() ? 'Nota guardada' : 'Nota borrada', r.id); abrirReserva(r.id); }
     catch (e) { $('#n-msg').innerHTML = '<div class="aviso mal">' + esc(msgError(e)) + '</div>'; b.disabled = false; b.textContent = 'Guardar nota'; }
   };
   $('#n-guardar').onclick = guardarNota;
   if ($('#t-editar')) $('#t-editar').onclick = () => { $('#t-form').hidden = !$('#t-form').hidden; if (!$('#t-form').hidden) $('#t-tel').focus(); };
   if ($('#t-guardar')) $('#t-guardar').onclick = async () => {
     const b = $('#t-guardar'); b.disabled = true; b.textContent = 'Guardando…';
-    try { D = await api('telefono', { id: r.id, tel: $('#t-tel').value }); guardar('nv-datos', D); render(); toast($('#t-tel').value.trim() ? 'Teléfono guardado' : 'Teléfono borrado'); abrirReserva(r.id); }
+    try { D = await api('telefono', { id: r.id, tel: $('#t-tel').value }); guardar('nv-datos', D); render(); toast($('#t-tel').value.trim() ? 'Teléfono guardado' : 'Teléfono borrado', r.id); abrirReserva(r.id); }
     catch (e) { $('#t-msg').innerHTML = '<div class="aviso mal">' + esc(msgError(e)) + '</div>'; b.disabled = false; b.textContent = 'Guardar teléfono'; }
   };
   if ($('#p-boton')) $('#p-boton').onclick = async () => {
     const b = $('#p-boton'); b.disabled = true;
-    try { D = await api('parte', { id: r.id, hecho: !r.parte }); guardar('nv-datos', D); render(); toast(r.parte ? 'Parte desmarcado' : 'Parte marcado como hecho'); abrirReserva(r.id); }
+    try { D = await api('parte', { id: r.id, hecho: !r.parte }); guardar('nv-datos', D); render(); toast(r.parte ? 'Parte desmarcado' : 'Parte marcado como hecho', r.id); abrirReserva(r.id); }
     catch (e) { $('#p-msg').innerHTML = '<div class="aviso mal">' + esc(msgError(e)) + '</div>'; b.disabled = false; }
   };
   if ($('#s-separar')) $('#s-separar').onclick = async () => {
@@ -494,18 +549,136 @@ function abrirReserva(id) {
     b.onclick = async () => {
       const marca = r.marca === b.dataset.marca ? '' : b.dataset.marca;
       document.querySelectorAll('[data-marca]').forEach(x => { x.disabled = true; });
-      try { D = await api('marcar', { id: r.id, marca }); guardar('nv-datos', D); render(); toast(marca === 'cerrado' ? 'Marcado: fechas cerradas a mano' : marca === 'externa' ? 'Marcado: reserva externa' : marca === 'smartbox' ? 'Marcado: reserva de Smartbox' : marca === 'reserva' ? 'Marcado: reserva de Booking' : 'Marca quitada'); abrirReserva(r.id); }
+      try { D = await api('marcar', { id: r.id, marca }); guardar('nv-datos', D); render(); toast(marca === 'cerrado' ? 'Marcado: fechas cerradas a mano' : marca === 'externa' ? 'Marcado: reserva externa' : marca === 'smartbox' ? 'Marcado: reserva de Smartbox' : marca === 'reserva' ? 'Marcado: reserva de Booking' : 'Marca quitada', r.id); abrirReserva(r.id); }
       catch (e) { $('#m-marca').innerHTML = '<div class="aviso mal">' + esc(msgError(e)) + '</div>'; document.querySelectorAll('[data-marca]').forEach(x => { x.disabled = false; }); }
     };
   });
   if (SR) $('#n-dictar').onclick = () => dictar(ta, $('#n-dictar'));
-  $('#f-cerrar').onclick = () => {
-    pararDictado();
-    if (ta.value.trim() !== original.trim()) {
-      const b = $('#f-cerrar');
-      if (!b.dataset.seguro) { b.dataset.seguro = '1'; b.textContent = 'Cerrar sin guardar la nota'; $('#n-msg').innerHTML = '<div class="aviso">Has cambiado la nota y no la has guardado.</div>'; return; }
-    }
-    cerrarHoja();
+  // Antes de dejar la reserva con la nota cambiada y sin guardar, se avisa una vez
+  let avisado = false;
+  const avisoNotaSinGuardar = () => {
+    if (avisado || ta.value.trim() === original.trim()) return false;
+    avisado = true; $('#n-msg').innerHTML = '<div class="aviso">Has cambiado la nota y no la has guardado. Toca otra vez para salir sin guardarla.</div>';
+    $('#f-cerrar').textContent = 'Cerrar sin guardar la nota'; ta.scrollIntoView({ block: 'center' });
+    return true;
+  };
+  $('#f-cerrar').onclick = () => { pararDictado(); if (avisoNotaSinGuardar()) return; cerrarHoja(); };
+}
+
+/* ---------- Mensaje de bienvenida (v22) ----------
+ * Los datos de cada apartamento se escriben en español (menú › Mensaje de bienvenida); el motor traduce
+ * el texto libre y aquí se monta el mensaje en el idioma del huésped, con las frases fijas ya traducidas. */
+const NEGOCIO = 'Apartamentos Nuncio Viejo';
+const IDIOMAS = { es: ['Español', 'es-ES'], en: ['English', 'en-GB'], fr: ['Français', 'fr-FR'], de: ['Deutsch', 'de-DE'], it: ['Italiano', 'it-IT'], pt: ['Português', 'pt-PT'], nl: ['Nederlands', 'nl-NL'] };
+const FRASES = {
+  es: { hola: 'Hola, {n}:', holaSin: 'Hola:', gracias: '¡Gracias por reservar en {neg}! Le esperamos el {fecha} en el apartamento {apt}.', dir: '📍 Dirección: ', mapa: '🗺️ Cómo llegar: ',
+    entrada: '🕒 Entrada a partir de las {h}.', salida: '🚪 Salida el {fecha}, antes de las {h}.', salidaSin: '🚪 Salida el {fecha}.', wifi: 'Wifi', clave: 'Contraseña', fin: 'Para cualquier cosa, escríbanos por aquí. ¡Buen viaje!' },
+  en: { hola: 'Hello {n},', holaSin: 'Hello,', gracias: 'Thank you for booking with {neg}! We look forward to welcoming you on {fecha} at the {apt} apartment.', dir: '📍 Address: ', mapa: '🗺️ How to get there: ',
+    entrada: '🕒 Check-in from {h}.', salida: '🚪 Check-out on {fecha}, by {h}.', salidaSin: '🚪 Check-out on {fecha}.', wifi: 'Wi-Fi', clave: 'Password', fin: 'If you need anything, just message us here. Have a good trip!' },
+  fr: { hola: 'Bonjour {n},', holaSin: 'Bonjour,', gracias: 'Merci d’avoir réservé chez {neg} ! Nous vous attendons le {fecha} dans l’appartement {apt}.', dir: '📍 Adresse : ', mapa: '🗺️ Itinéraire : ',
+    entrada: '🕒 Arrivée à partir de {h}.', salida: '🚪 Départ le {fecha}, avant {h}.', salidaSin: '🚪 Départ le {fecha}.', wifi: 'Wi-Fi', clave: 'Mot de passe', fin: 'Pour toute question, écrivez-nous ici. Bon voyage !' },
+  de: { hola: 'Hallo {n},', holaSin: 'Hallo,', gracias: 'Vielen Dank für Ihre Buchung bei {neg}! Wir erwarten Sie am {fecha} in der Wohnung {apt}.', dir: '📍 Adresse: ', mapa: '🗺️ Anfahrt: ',
+    entrada: '🕒 Check-in ab {h}.', salida: '🚪 Check-out am {fecha} bis {h}.', salidaSin: '🚪 Check-out am {fecha}.', wifi: 'WLAN', clave: 'Passwort', fin: 'Wenn Sie etwas brauchen, schreiben Sie uns einfach hier. Gute Reise!' },
+  it: { hola: 'Buongiorno {n},', holaSin: 'Buongiorno,', gracias: 'Grazie per aver prenotato presso {neg}! La aspettiamo {fecha} nell’appartamento {apt}.', dir: '📍 Indirizzo: ', mapa: '🗺️ Come arrivare: ',
+    entrada: '🕒 Check-in dalle {h}.', salida: '🚪 Check-out {fecha}, entro le {h}.', salidaSin: '🚪 Check-out {fecha}.', wifi: 'Wi-Fi', clave: 'Password', fin: 'Per qualsiasi cosa, ci scriva qui. Buon viaggio!' },
+  pt: { hola: 'Olá, {n}!', holaSin: 'Olá!', gracias: 'Obrigado por reservar no {neg}! Esperamos por si no dia {fecha}, no apartamento {apt}.', dir: '📍 Morada: ', mapa: '🗺️ Como chegar: ',
+    entrada: '🕒 Check-in a partir das {h}.', salida: '🚪 Check-out no dia {fecha}, até às {h}.', salidaSin: '🚪 Check-out no dia {fecha}.', wifi: 'Wi-Fi', clave: 'Palavra-passe', fin: 'Para qualquer coisa, escreva-nos por aqui. Boa viagem!' },
+  nl: { hola: 'Hallo {n},', holaSin: 'Hallo,', gracias: 'Bedankt voor uw boeking bij {neg}! We verwachten u op {fecha} in appartement {apt}.', dir: '📍 Adres: ', mapa: '🗺️ Route: ',
+    entrada: '🕒 Inchecken vanaf {h}.', salida: '🚪 Uitchecken op {fecha}, vóór {h}.', salidaSin: '🚪 Uitchecken op {fecha}.', wifi: 'Wifi', clave: 'Wachtwoord', fin: 'Heeft u iets nodig? Stuur ons hier gerust een bericht. Goede reis!' },
+};
+// Idioma probable por el prefijo del teléfono (se puede cambiar con un toque)
+const PREFIJOS = { es: ['34', '52', '54', '56', '57', '51', '58', '53', '591', '593', '595', '598', '502', '503', '504', '505', '506', '507', '1809', '1829', '1849'],
+  fr: ['33', '352', '377'], de: ['49', '43', '41', '423'], it: ['39', '378'], pt: ['351', '55'], nl: ['31', '32'] };
+function idiomaDe(tel) {
+  const t = String(tel || '').replace(/\D/g, '');
+  if (!t) return 'es';
+  let mejor = 'en', largo = 0;
+  Object.keys(PREFIJOS).forEach(l => PREFIJOS[l].forEach(p => { if (t.indexOf(p) === 0 && p.length > largo) { mejor = l; largo = p.length; } }));
+  return mejor;
+}
+function fechaEn(ymd, l) {
+  try { return new Intl.DateTimeFormat(IDIOMAS[l][1], { weekday: 'long', day: 'numeric', month: 'long', timeZone: 'UTC' }).format(new Date(ymd + 'T12:00:00Z')); }
+  catch (e) { return fLarga(ymd); }
+}
+function rellenar(s, o) { return s.replace(/\{(\w+)\}/g, (x, k) => (o[k] == null ? '' : o[k])); }
+/** El mensaje en el idioma «l» y qué partes han tenido que ir en español (no se pudieron traducir) */
+function mensajeBienvenida(r, l) {
+  const F = FRASES[l] || FRASES.es, b = (D.bienvenida || {})[r.apt] || {}, tr = (b.tr || {})[l] || {}, sinTraducir = [];
+  const libre = k => { if (!b[k]) return ''; if (l === 'es' || tr[k]) return l === 'es' ? b[k] : tr[k]; sinTraducir.push(k); return b[k]; };
+  const nom = String(r.nombre || '').trim().split(/\s+/)[0];
+  const L = [nom ? rellenar(F.hola, { n: nom }) : F.holaSin, '', rellenar(F.gracias, { neg: NEGOCIO, fecha: fechaEn(r.entrada, l), apt: r.apt }), ''];
+  if (b.direccion) L.push(F.dir + b.direccion);
+  if (b.mapa) L.push(F.mapa + b.mapa);
+  if (b.entrada) L.push(rellenar(F.entrada, { h: b.entrada }));
+  L.push(rellenar(b.salida ? F.salida : F.salidaSin, { fecha: fechaEn(r.salida, l), h: b.salida }));
+  const llaves = libre('llaves'); if (llaves) L.push('🔑 ' + llaves);
+  if (b.wifi || b.clave) L.push('📶 ' + F.wifi + (b.wifi ? ': ' + b.wifi : '') + (b.clave ? ' · ' + F.clave + ': ' + b.clave : ''));
+  const extra = libre('extra'); if (extra) L.push('ℹ️ ' + extra);
+  L.push('', F.fin, '', NEGOCIO);
+  return { texto: L.join('\n'), sinTraducir };
+}
+function bienvenidaVacia(apt) { const b = (D.bienvenida || {})[apt] || {}; return !b.direccion && !b.llaves && !b.wifi && !b.entrada; }
+
+function abrirBienvenida(id, idioma) {
+  const r = D.reservas.find(x => x.id === id);
+  if (!r) return;
+  const l = idioma || idiomaDe(r.tel), m = mensajeBienvenida(r, l);
+  const num = r.tel ? r.tel.replace(/\D/g, '') : '';
+  const enlaceWa = txt => 'https://wa.me/' + num + '?text=' + encodeURIComponent(txt);
+  let h = '<h2>👋 Mensaje de bienvenida</h2><div class="hint">' + esc((r.nombre || 'Huésped') + ' · ' + r.apt + ' · entra el ' + fCorta(r.entrada)) + '</div>' +
+    (bienvenidaVacia(r.apt) ? '<div class="aviso"><b>Faltan los datos de ' + esc(r.apt) + '</b>Escribe una vez la dirección, la hora de entrada, el wifi y cómo se entra: luego sale solo en cada mensaje.<button class="btn" style="margin-top:8px;width:100%" id="b-editar2">✏️ Escribirlos ahora</button></div>' : '') +
+    '<div class="hint">Idioma del mensaje:</div><div class="idiomas">' +
+    Object.keys(IDIOMAS).map(k => '<button class="chip' + (k === l ? ' on' : '') + '" data-idioma="' + k + '">' + esc(IDIOMAS[k][0]) + '</button>').join('') + '</div>' +
+    '<label class="campo">Puedes cambiar lo que quieras antes de enviarlo<textarea id="b-texto" rows="14">' + esc(m.texto) + '</textarea></label>' +
+    (m.sinTraducir.length ? '<div class="hint">⚠️ ' + (m.sinTraducir.length === 2 ? 'Cómo entrar y «algo más» van' : m.sinTraducir[0] === 'llaves' ? 'Cómo entrar va' : '«Algo más» va') + ' en español: no se pudo traducir. Vuelve a guardar los datos del apartamento para intentarlo otra vez.</div>' : '') +
+    '<div class="enlaces">' + (num ? '<a class="btn prim" id="b-wa" target="_blank" rel="noopener" href="' + esc(enlaceWa(m.texto)) + '">💬 Enviar por WhatsApp</a>' : '') + '<button class="btn" id="b-copiar">📋 Copiar</button></div>' +
+    (num ? '' : '<div class="hint">' + (r.plat === 'Booking' || r.plat === 'Airbnb' || r.plat === 'Vrbo' ? 'No hay teléfono: cópialo y pégalo en el chat de ' + esc(r.plat) + ' con el huésped.' : 'No hay teléfono: cópialo y pégalo donde habléis con el huésped.') + '</div>') +
+    '<div class="acciones"><button class="btn" id="b-editar">✏️ Datos del apartamento</button><button class="btn prim" id="b-volver">Volver</button></div>';
+  abrirHoja(h);
+  const ta = $('#b-texto');
+  ta.oninput = () => { if ($('#b-wa')) $('#b-wa').href = enlaceWa(ta.value); };
+  document.querySelectorAll('[data-idioma]').forEach(b => { b.onclick = () => abrirBienvenida(id, b.dataset.idioma); });
+  $('#b-copiar').onclick = async () => {
+    try { await navigator.clipboard.writeText(ta.value); toast('Copiado: ahora pégalo en el chat'); }
+    catch (e) { ta.focus(); ta.select(); toast('Mantén el dedo sobre el texto y elige «Copiar»'); }
+  };
+  $('#b-editar').onclick = () => abrirDatosBienvenida(id);
+  if ($('#b-editar2')) $('#b-editar2').onclick = () => abrirDatosBienvenida(id);
+  $('#b-volver').onclick = () => abrirReserva(id);
+}
+
+const CAMPOS_BIENV = [
+  ['direccion', 'Dirección', 'Ej.: Calle del Nuncio Viejo 1, 2º A, Toledo', 200],
+  ['mapa', 'Enlace de Google Maps (si quieres)', 'https://maps.app.goo.gl/…', 300],
+  ['entrada', 'Hora de entrada', '16:00', 20],
+  ['salida', 'Hora de salida', '11:00', 20],
+  ['wifi', 'Nombre del wifi', '', 80],
+  ['clave', 'Contraseña del wifi', '', 80],
+  ['llaves', 'Cómo se entra y las llaves', 'Ej.: La llave está en la caja de la puerta; el código es el 1234.', 600, true],
+  ['extra', 'Algo más (si quieres)', 'Ej.: Hay aparcamiento público en la calle de al lado.', 600, true],
+];
+/** Los datos de cada apartamento para el mensaje (lo ve cualquiera con la app; la contraseña del wifi incluida) */
+function abrirDatosBienvenida(volverA) {
+  const B = D.bienvenida || {};
+  let h = '<h2>👋 Datos para la bienvenida</h2><div class="hint">Escríbelo en español: al guardar se traduce solo a los otros idiomas. Lo que dejes vacío no sale en el mensaje.</div>';
+  D.apartamentos.forEach((apt, i) => {
+    const b = B[apt] || {};
+    h += '<div class="detalle" style="margin-top:12px"><h3>' + esc(apt) + '</h3>' +
+      CAMPOS_BIENV.map(c => '<label class="campo">' + esc(c[1]) + (c[4]
+        ? '<textarea data-bi="' + i + '" data-k="' + c[0] + '" maxlength="' + c[3] + '" placeholder="' + esc(c[2]) + '">' + esc(b[c[0]] || '') + '</textarea>'
+        : '<input data-bi="' + i + '" data-k="' + c[0] + '" maxlength="' + c[3] + '" autocomplete="off"' + (c[0] === 'mapa' ? ' inputmode="url"' : '') + ' placeholder="' + esc(c[2]) + '" value="' + esc(b[c[0]] || '') + '">') + '</label>').join('') +
+      '</div>';
+  });
+  h += '<div class="msg" id="bd-msg"></div><div class="acciones"><button class="btn" id="bd-volver">Volver</button><button class="btn prim" id="bd-guardar">Guardar</button></div>';
+  abrirHoja(h);
+  const volver = () => (volverA ? abrirBienvenida(volverA) : cerrarHoja());
+  $('#bd-volver').onclick = volver;
+  $('#bd-guardar').onclick = async () => {
+    const datos = {};
+    D.apartamentos.forEach((apt, i) => { datos[apt] = {}; document.querySelectorAll('[data-bi="' + i + '"]').forEach(el => { datos[apt][el.dataset.k] = el.value; }); });
+    const b = $('#bd-guardar'); b.disabled = true; b.textContent = 'Guardando y traduciendo…';
+    try { D = await api('bienvenida', { datos }); guardar('nv-datos', D); toast('Datos de la bienvenida guardados'); volver(); }
+    catch (e) { $('#bd-msg').innerHTML = '<div class="aviso mal">' + esc(msgError(e)) + '</div>'; b.disabled = false; b.textContent = 'Guardar'; }
   };
 }
 
@@ -786,10 +959,11 @@ function abrirRectificar(r) {
 function abrirMenu() {
   let h = '<h2>Menú</h2><div class="hint">Has entrado como <b>' + esc(SES.email) + '</b></div><div class="menu-lista">';
   if (SES.admin) h += '<button class="btn" id="m-cal">Calendarios de las plataformas</button><button class="btn" id="m-disp">Dispositivos conectados</button><button class="btn" id="m-reg">Registro de actividad</button>';
-  h += '<button class="btn peligro" id="m-salir">Cerrar sesión en este móvil</button><button class="btn prim" id="m-cerrar">Volver</button></div><div class="msg" id="m-msg"></div>';
+  h += '<button class="btn" id="m-bienv">👋 Mensaje de bienvenida</button><button class="btn peligro" id="m-salir">Cerrar sesión en este móvil</button><button class="btn prim" id="m-cerrar">Volver</button></div><div class="msg" id="m-msg"></div>';
   abrirHoja(h);
   if (SES.admin) { $('#m-cal').onclick = abrirCalendarios; $('#m-disp').onclick = abrirDispositivos; $('#m-reg').onclick = () => abrirRegistro(); }
   $('#m-cerrar').onclick = cerrarHoja;
+  $('#m-bienv').onclick = () => abrirDatosBienvenida();
   $('#m-salir').onclick = async () => { try { await llamar({ accion: 'salir', token: SES.token }); } catch (e) { /* nada */ } salirLocal(); };
 }
 
@@ -859,6 +1033,17 @@ const TIPOS_REG = {
   parte: ['📋', 'Marcó un parte de viajeros como hecho'],
   parte_quitado: ['📋', 'Desmarcó un parte de viajeros'],
   rectificativa: ['🧾', 'Hizo una factura rectificativa'],
+  limpieza: ['🧹', 'Marcó una limpieza como hecha'],
+  limpieza_quitada: ['🧹', 'Desmarcó una limpieza'],
+  recibido: ['🔑', 'Marcó la llegada de un huésped'],
+  recibido_quitado: ['🔑', 'Desmarcó la llegada de un huésped'],
+  bienvenida: ['👋', 'Cambió los datos del mensaje de bienvenida'],
+  deshecho_nota: ['↩️', 'Deshizo el cambio de una nota'],
+  deshecho_telefono: ['↩️', 'Deshizo el cambio de un teléfono'],
+  deshecho_parte: ['↩️', 'Deshizo lo marcado en un parte de viajeros'],
+  deshecho_marca: ['↩️', 'Deshizo una marca de Booking'],
+  deshecho_limpio: ['↩️', 'Deshizo lo marcado en una limpieza'],
+  deshecho_recibido: ['↩️', 'Deshizo lo marcado en una llegada'],
   marca_cerrado: ['🔒', 'Marcó unas fechas de Booking como cerradas a mano'],
   marca_reserva: ['✅', 'Confirmó una reserva de Booking'],
   marca_externa: ['📞', 'Marcó unas fechas de Booking como reserva externa'],
@@ -963,6 +1148,7 @@ document.addEventListener('click', e => {
   if (mb) { const p = mes.split('-').map(Number); const d = new Date(Date.UTC(p[0], p[1] - 1 + Number(mb.dataset.mes), 1)); mes = d.toISOString().slice(0, 7); diaSel = null; render(); return; }
   const di = t.closest('[data-dia]'); if (di) { diaSel = di.dataset.dia; if (diaSel.slice(0, 7) !== mes) mes = diaSel.slice(0, 7); render(); return; }
   const fb = t.closest('[data-factura]'); if (fb) { pararDictado(); abrirFactura(fb.dataset.factura); return; }
+  const tr = t.closest('[data-tarea]'); if (tr) { marcarTarea(tr); return; }
   const re = t.closest('[data-id]'); if (re) abrirReserva(re.dataset.id);
 });
 $('#velo').addEventListener('click', e => { if (e.target.id === 'velo') cerrarHoja(); });

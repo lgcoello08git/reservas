@@ -177,6 +177,21 @@ label.campo{display:block;margin:12px 0 0;font-size:14px;font-weight:600;color:v
 
 .toast{position:fixed;left:50%;bottom:calc(92px + env(safe-area-inset-bottom));transform:translateX(-50%) translateY(20px);opacity:0;pointer-events:none;background:var(--ink);color:var(--bg);padding:12px 16px;border-radius:14px;font-size:15px;max-width:calc(100% - 32px);width:max-content;transition:.2s;z-index:30}
 .toast.ver{opacity:1;transform:translateX(-50%)}
+.toast{display:flex;align-items:center;gap:12px}
+.toast.ver.con-boton{pointer-events:auto}
+.toast button{flex:none;border:0;background:transparent;color:var(--accent-soft);font:inherit;font-weight:800;text-decoration:underline;padding:6px 2px;cursor:pointer}
+.tarea{display:flex;align-items:center;gap:12px;width:100%;text-align:left;background:var(--card);border:1px solid var(--line);border-radius:14px;padding:12px;margin:0 0 8px;cursor:pointer;box-shadow:var(--shadow);color:var(--ink)}
+.tarea .caja{flex:none;width:30px;height:30px;border:2px solid var(--muted);border-radius:9px;display:grid;place-items:center;color:transparent;font-weight:800;font-size:18px}
+.tarea.hecha .caja{background:var(--ok);border-color:var(--ok);color:#fff}
+.tarea .t{flex:1;min-width:0}
+.tarea .tt{display:block;font-size:17px;font-weight:650}
+.tarea.hecha .tt{color:var(--muted);text-decoration:line-through}
+.tarea small{display:block;color:var(--muted);font-size:15px}
+.tarea[disabled]{opacity:.7}
+.idiomas{display:flex;flex-wrap:wrap;gap:6px;margin:4px 0 0}
+.idiomas .chip{padding:8px 12px}
+#b-texto{min-height:260px;font-size:16px;font-weight:400;line-height:1.45}
+.enlaces #b-wa,.enlaces #b-copiar{flex-basis:100%;padding:14px 8px;font-size:16px}
 .cargando{padding:60px 0;text-align:center;color:var(--muted)}
 
 /* PWA */
@@ -242,6 +257,6 @@ label.campo{display:block;margin:12px 0 0;font-size:14px;font-weight:600;color:v
 <div class="velo" id="velo" hidden><div class="hoja" id="hoja" role="dialog" aria-modal="true"></div></div>
 <div class="toast" id="toast"></div>
 
-<script src="app.js?v=21"></script>
+<script src="app.js?v=22"></script>
 </body>
 </html>
