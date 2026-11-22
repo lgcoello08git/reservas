@@ -112,8 +112,39 @@ async function deshacer(id) {
   } catch (e) { toast(msgError(e)); }
 }
 function msgError(e) { const m = e && e.message ? e.message : String(e || 'Error'); return /failed to fetch|load failed|networkerror/i.test(m) ? 'Sin conexión' : m; }
-function abrirHoja(html) { hojaId = null; $('#hoja').innerHTML = '<div class="asa"></div>' + html; $('#velo').hidden = false; document.body.classList.add('bloq'); }
-function cerrarHoja() { $('#velo').hidden = true; document.body.classList.remove('bloq'); }
+/* Hojas (las fichas que suben desde abajo). Desde v24 se cierran con la ✕ fija de arriba, con «Cerrar», tocando fuera
+ * o con el «atrás» del móvil. Una hoja puede poner guardaHoja: si devuelve false, no se cierra (p. ej. una nota sin guardar). */
+let guardaHoja = null;
+function abrirHoja(html) {
+  hojaId = null; guardaHoja = null;
+  $('#hoja').innerHTML = '<div class="hoja-cab"><div class="asa"></div><button class="hoja-x" id="hoja-x" aria-label="Cerrar" title="Cerrar">✕</button></div>' + html;
+  $('#hoja-x').onclick = () => cerrarHojaUsuario();
+  $('#velo').hidden = false; document.body.classList.add('bloq');
+  $('#hoja').scrollTop = 0;
+  capaAbrir();
+}
+function cerrarHoja() { $('#velo').hidden = true; guardaHoja = null; document.body.classList.toggle('bloq', !!tuto); capaSoltar(); }
+/** Cerrar porque lo pide la persona (✕, «Cerrar», tocar fuera, «atrás»): antes se pregunta a la hoja si se puede. */
+function cerrarHojaUsuario() { if ($('#velo').hidden) return true; if (guardaHoja && guardaHoja() === false) return false; cerrarHoja(); return true; }
+
+/* El «atrás» del móvil cierra lo que esté abierto encima (la ayuda o una hoja) en vez de salir de la app.
+ * Mientras hay algo abierto, hay una entrada de más en el historial; al cerrarlo todo, se quita. */
+let capaHist = false;
+const capaAbierta = () => !!tuto || !$('#velo').hidden;
+function capaAbrir() { if (capaHist) return; try { history.pushState({ capa: 1 }, ''); capaHist = true; } catch (e) { /* nada */ } }
+function capaSoltar() {
+  setTimeout(() => {   // un momento después, por si enseguida se abre otra cosa (p. ej. del menú a la ayuda)
+    if (!capaHist || capaAbierta()) return;
+    capaHist = false;
+    if (history.state && history.state.capa) history.back();
+  }, 0);
+}
+window.addEventListener('popstate', () => {
+  if (!capaHist) return;
+  capaHist = false;
+  if (tuto) tutoOcultar(); else cerrarHojaUsuario();
+  if (capaAbierta()) capaAbrir();   // seguía abierta (una nota sin guardar) o había otra debajo
+});
 
 /* ---------- Entrar con email y código ---------- */
 function pantallaEntrar(email) {
@@ -444,6 +475,9 @@ function explicaBooking(r) {
   return 'El calendario de Booking marca igual una reserva y unas fechas cerradas a mano. Si no es lo que dice la app, márcalo aquí.';
 }
 
+/* Se puede escribir el nº a mano en una reserva de Booking sin nº de correo y sin factura (v24) */
+function puedeNumero(r) { return r.plat === 'Booking' && r.marca === 'reserva' && !esCierre(r) && !r.factura && (!r.numPlat || !!r.numPor); }
+
 /* ---------- Detalle de una reserva (solo consulta) ---------- */
 function abrirReserva(id) {
   const r = D.reservas.find(x => x.id === id);
@@ -466,7 +500,7 @@ function abrirReserva(id) {
     (r.tel ? '<div class="dato"><span>Teléfono</span><b>' + esc(r.tel) + '</b></div>'
       : r.tel4 ? '<div class="dato"><span>Teléfono</span><b>acaba en ' + esc(r.tel4) + '</b></div>' : '') +
     (r.codigo ? '<div class="dato"><span>Código</span><b>' + esc(r.codigo) + '</b></div>' : '') +
-    (r.numPlat && r.numPlat !== r.codigo ? '<div class="dato"><span>Nº de reserva</span><b>' + esc(r.numPlat) + '</b></div>' : '') +
+    (r.numPlat && r.numPlat !== r.codigo ? '<div class="dato"><span>Nº de reserva</span><b>' + esc(r.numPlat) + (r.numPor ? ' <small style="font-weight:400;color:var(--muted)">(escrito a mano)</small>' : '') + '</b></div>' : '') +
     (r.factura ? '<div class="dato"><span>Factura</span><b>' + esc(r.factura) + (r.facturaEnv ? ' · enviada' : ' · sin enviar') + '</b></div>' : '') +
     '</div>';
   // Llamar o escribir al huésped (el teléfono viene del correo o se escribe aquí)
@@ -477,6 +511,13 @@ function abrirReserva(id) {
     h += '<div id="t-form" hidden><label class="campo">Teléfono del huésped<input id="t-tel" inputmode="tel" autocomplete="off" value="' + esc(r.tel || '') + '"></label>' +
       '<div class="hint">Con el prefijo del país, por ejemplo +34 600 123 456.' + (r.tel4 && !r.tel ? ' Acaba en ' + esc(r.tel4) + '; el número completo está en la app de ' + esc(r.plat) + '.' : r.plat === 'Booking' && !r.tel ? ' Booking no lo manda: está en la app de Booking.' : '') + '</div>' +
       '<div class="enlaces"><button class="btn" id="t-guardar">Guardar teléfono</button></div><div class="msg" id="t-msg"></div></div>';
+  }
+  // Nº de reserva de Booking: las de antes del 8/11/2026 no tienen correo, así que tampoco nº. Se escribe a mano.
+  if (puedeNumero(r)) {
+    h += '<div class="enlaces"><button class="btn" id="nb-editar">' + (r.numPlat ? '✏️ Cambiar el nº de reserva' : '🔢 Añadir el nº de reserva de Booking') + '</button></div>' +
+      '<div id="nb-form" hidden><label class="campo">Nº de reserva de Booking<input id="nb-num" inputmode="numeric" autocomplete="off" maxlength="14" placeholder="10 cifras" value="' + esc(r.numPlat || '') + '"></label>' +
+      '<div class="hint">Está en la app de Booking o en la extranet → Reservas (búscala por la fecha de entrada). Son 10 cifras.' + (r.numPlat ? ' Para quitarlo, bórralo y guarda.' : '') + '</div>' +
+      '<div class="enlaces"><button class="btn" id="nb-guardar">Guardar nº</button></div><div class="msg" id="nb-msg"></div></div>';
   }
   if (!esCierre(r) && !r.dudoso && r.entrada >= D.hoy) h += '<div class="enlaces"><button class="btn" id="b-abrir">👋 Mensaje de bienvenida</button></div>';
   if (diaDeCambio(r)) h += '<div class="hint">🔄 <b>Día de cambio:</b> el día que entra sale otro huésped de este apartamento. La limpieza tiene que caber entre la salida y la entrada.</div>';
@@ -530,6 +571,12 @@ function abrirReserva(id) {
   };
   $('#n-guardar').onclick = guardarNota;
   if ($('#t-editar')) $('#t-editar').onclick = () => { $('#t-form').hidden = !$('#t-form').hidden; if (!$('#t-form').hidden) $('#t-tel').focus(); };
+  if ($('#nb-editar')) $('#nb-editar').onclick = () => { $('#nb-form').hidden = !$('#nb-form').hidden; if (!$('#nb-form').hidden) $('#nb-num').focus(); };
+  if ($('#nb-guardar')) $('#nb-guardar').onclick = async () => {
+    const b = $('#nb-guardar'), v = $('#nb-num').value; b.disabled = true; b.textContent = 'Guardando…';
+    try { D = await api('numero', { id: r.id, num: v }); guardar('nv-datos', D); render(); toast(v.trim() ? 'Nº de reserva guardado' : 'Nº de reserva quitado', r.id); abrirReserva(r.id); }
+    catch (e) { $('#nb-msg').innerHTML = '<div class="aviso mal">' + esc(msgError(e)) + '</div>'; $('#nb-msg').scrollIntoView({ block: 'nearest' }); b.disabled = false; b.textContent = 'Guardar nº'; }
+  };
   if ($('#t-guardar')) $('#t-guardar').onclick = async () => {
     const b = $('#t-guardar'); b.disabled = true; b.textContent = 'Guardando…';
     try { D = await api('telefono', { id: r.id, tel: $('#t-tel').value }); guardar('nv-datos', D); render(); toast($('#t-tel').value.trim() ? 'Teléfono guardado' : 'Teléfono borrado', r.id); abrirReserva(r.id); }
@@ -563,7 +610,8 @@ function abrirReserva(id) {
     $('#f-cerrar').textContent = 'Cerrar sin guardar la nota'; ta.scrollIntoView({ block: 'center' });
     return true;
   };
-  $('#f-cerrar').onclick = () => { pararDictado(); if (avisoNotaSinGuardar()) return; cerrarHoja(); };
+  guardaHoja = () => { pararDictado(); return !avisoNotaSinGuardar(); };
+  $('#f-cerrar').onclick = () => cerrarHojaUsuario();
 }
 
 /* ---------- Mensaje de bienvenida (v22) ----------
@@ -1035,6 +1083,9 @@ const TIPOS_REG = {
   restaurada: ['💾', 'Se recuperó una copia de seguridad'],
   telefono: ['📞', 'Guardó el teléfono de un huésped'],
   telefono_borrado: ['📞', 'Borró el teléfono de un huésped'],
+  numero: ['🔢', 'Escribió el nº de una reserva de Booking'],
+  numero_borrado: ['🔢', 'Quitó el nº de una reserva de Booking'],
+  deshecho_numero: ['↩️', 'Deshizo el cambio de un nº de reserva'],
   parte: ['📋', 'Marcó un parte de viajeros como hecho'],
   parte_quitado: ['📋', 'Desmarcó un parte de viajeros'],
   rectificativa: ['🧾', 'Hizo una factura rectificativa'],
@@ -1242,10 +1293,12 @@ const TEMAS = [
       d: dDemo(dCab('menu')) },
     { t: 'Las notas', x: 'Abajo de la ficha hay una <b>nota privada</b>: «llegan a las 23 h», «traen cuna», «ya pagado»…<br>Solo la veis vosotros, <b>nunca el huésped</b>. Puedes escribirla o tocar <b>🎤 Dictar</b> y hablar. Luego toca «Guardar nota».',
       d: dDemo(dFicha(dCampo('📝 Nota privada (solo la veis vosotros)', 'Llegan tarde, sobre las 23 h', true) + '<div class="enlaces">' + dBtn('🎤 Dictar') + dBtn('Guardar nota') + '</div>')) },
+    { t: 'Las de Booking sin nº de reserva', x: 'Booking manda el nº de reserva en su correo, pero las reservas hechas <b>antes del 8 de noviembre de 2026</b> no tienen correo, así que la app no sabe su nº.<br>Si lo necesitas, toca «<b>🔢 Añadir el nº de reserva de Booking</b>» y escríbelo: está en la app de Booking (son 10 cifras).',
+      d: dDemo(dFicha(dBtn('🔢 Añadir el nº de reserva de Booking', false, true))) },
     { t: 'Las de Booking: «¿Qué es esto?»', x: 'Booking enseña igual una reserva que unos días cerrados a mano. La app lo averigua sola con los correos de Booking.<br>Si no puede, te lo pregunta: toca lo que sea (<b>reserva de Booking</b>, <b>lo cerré yo</b>, <b>Smartbox</b>…). Lo que marques tú <b>manda siempre</b>.',
       d: dDemo(dFicha('<div class="detalle"><h3>¿Qué es esto?</h3><div class="seg tuto-foco"><span class="segb">✅ Es una reserva de Booking</span><span class="segb">🔒 Lo cerré yo</span><span class="segb">🎁 Es de Smartbox</span><span class="segb">Reserva externa</span></div></div>')) },
-    { t: 'Para salir de la ficha', x: 'Toca <b>Cerrar</b> abajo, o toca en la parte oscura de arriba.',
-      d: dDemo(dFicha('<div class="acciones">' + dBtn('Ver en Airbnb') + dBtn('Cerrar', true, true) + '</div>')) },
+    { t: 'Para salir de la ficha', x: 'Toca la <b>✕</b> de arriba a la derecha (está siempre a la vista, aunque bajes), o el botón de <b>volver atrás</b> del móvil. También vale «Cerrar», abajo del todo.',
+      d: dDemo(dFicha('<div class="hoja-cab"><div class="asa"></div><span class="hoja-x tuto-foco">✕</span></div><div class="hoja-top p-Airbnb"><span class="pill">Airbnb</span><span class="apt">Vistas a la Catedral</span></div><h2>vie 4 dic → dom 6 dic</h2>')) },
   ] },
   { id: 'cal', ico: '📅', t: 'Calendario y Ocupación', sub: 'Ver el mes entero', pasos: [
     { t: 'El calendario', x: 'Cada apartamento tiene una <b>raya de color</b> por reserva. <b>Toca un día</b> y debajo sale quién hay.<br>Con las flechas de arriba cambias de mes. El día de hoy está marcado con un círculo.',
@@ -1316,24 +1369,20 @@ const TEMAS = [
 function tutoEstado() { return leer(TUTO_K) || {}; }
 function tutoMarcar(k, v) { const e = tutoEstado(); e[k] = v; guardar(TUTO_K, e); }
 function abrirTutorial(id) {
-  const nuevo = !tuto;
   tuto = { cap: null, paso: 0, seguido: false };
   let el = $('#tuto');
   if (!el) { el = document.createElement('div'); el.id = 'tuto'; el.setAttribute('role', 'dialog'); el.setAttribute('aria-modal', 'true'); document.body.appendChild(el); }
   el.hidden = false; document.body.classList.add('bloq');
-  if (nuevo) { try { history.pushState({ tuto: 1 }, ''); } catch (e) { /* nada */ } }
+  capaAbrir();
   if (id && TEMAS.some(t => t.id === id)) tutoIr(id, 0); else tutoIndice();
 }
 function tutoOcultar() {
   tuto = null; callar();
   const el = $('#tuto'); if (el) { el.hidden = true; el.innerHTML = ''; }
   document.body.classList.toggle('bloq', !$('#velo').hidden);
+  capaSoltar();
 }
-function cerrarTutorial() {
-  if (history.state && history.state.tuto) history.back();   // el «atrás» del móvil también la cierra
-  else tutoOcultar();
-}
-window.addEventListener('popstate', () => { if (tuto) tutoOcultar(); });
+function cerrarTutorial() { tutoOcultar(); }   // el «atrás» del móvil también la cierra (ver capaAbrir)
 
 function tutoPintar(html) {
   const el = $('#tuto');
@@ -1529,7 +1578,7 @@ document.addEventListener('click', e => {
   const tr = t.closest('[data-tarea]'); if (tr) { marcarTarea(tr); return; }
   const re = t.closest('[data-id]'); if (re) abrirReserva(re.dataset.id);
 });
-$('#velo').addEventListener('click', e => { if (e.target.id === 'velo') cerrarHoja(); });
+$('#velo').addEventListener('click', e => { if (e.target.id === 'velo') cerrarHojaUsuario(); });
 $('#btnSync').onclick = sincronizar;
 $('#buscar').addEventListener('input', e => { busqueda = e.target.value; if (D && tab === 'proximas') { renderProximas(); window.scrollTo(0, 0); } });
 $('#btnMenu').onclick = abrirMenu;

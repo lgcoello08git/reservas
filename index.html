@@ -154,6 +154,11 @@ a{color:var(--accent)}
 .hoja{background:var(--bg);width:100%;max-width:640px;max-height:92vh;overflow:auto;border-radius:22px 22px 0 0;padding:8px 16px calc(20px + env(safe-area-inset-bottom));animation:sube .18s ease-out}
 @keyframes sube{from{transform:translateY(30px);opacity:.6}}
 .asa{width:44px;height:5px;border-radius:9px;background:var(--line);margin:4px auto 10px}
+.hoja-cab{position:sticky;top:-8px;z-index:4;height:52px;margin:-8px -16px 2px;padding:8px 16px 0;background:var(--bg)}
+.hoja-cab .asa{margin:4px auto 0}
+.hoja-x{position:absolute;right:12px;top:8px;width:44px;height:44px;border-radius:50%;border:1px solid var(--line);background:var(--card);color:var(--ink);font:inherit;font-size:20px;font-weight:700;line-height:1;display:grid;place-items:center;cursor:pointer;box-shadow:var(--shadow)}
+.tuto-demo .hoja-cab{position:relative;top:0;height:48px;margin:0 0 4px;padding:0;background:transparent}
+.tuto-demo .hoja-x{top:2px;right:2px}
 .hoja-top{display:flex;align-items:center;gap:8px;margin-bottom:6px}
 .hoja-top .apt{flex:1}
 .hoja h2{margin:0 0 4px;font-size:21px}
@@ -327,6 +332,6 @@ label.campo{display:block;margin:12px 0 0;font-size:14px;font-weight:600;color:v
 <div class="velo" id="velo" hidden><div class="hoja" id="hoja" role="dialog" aria-modal="true"></div></div>
 <div class="toast" id="toast"></div>
 
-<script src="app.js?v=23"></script>
+<script src="app.js?v=24"></script>
 </body>
 </html>
